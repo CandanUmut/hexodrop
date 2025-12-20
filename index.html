@@ -20,14 +20,22 @@
     </header>
 
     <main class="app-main">
-      <div class="game-container">
-        <canvas id="game-canvas"></canvas>
+      <div class="game-column">
+        <div class="game-container">
+          <canvas id="game-canvas"></canvas>
 
-        <!-- Touch / pointer control zones -->
-        <div id="touch-left" class="touch-zone left"></div>
-        <div id="touch-right" class="touch-zone right"></div>
-        <div id="touch-top" class="touch-zone top"></div>
-        <div id="touch-bottom" class="touch-zone bottom"></div>
+          <!-- Touch / pointer control zones -->
+          <div id="touch-left" class="touch-zone left"></div>
+          <div id="touch-right" class="touch-zone right"></div>
+          <div id="touch-top" class="touch-zone top"></div>
+          <div id="touch-bottom" class="touch-zone bottom"></div>
+        </div>
+
+        <div class="mobile-controls">
+          <button id="btn-rotate-hive-left" class="control-btn">⟲ Hive</button>
+          <button id="btn-drop" class="control-btn">Drop</button>
+          <button id="btn-rotate-hive-right" class="control-btn">⟳ Hive</button>
+        </div>
       </div>
 
       <aside class="side-panel">
@@ -42,7 +50,7 @@
             <span id="stat-level" class="stat-value">1</span>
           </div>
           <div class="stat-row">
-            <span>Lines</span>
+            <span>Rings</span>
             <span id="stat-lines" class="stat-value">0</span>
           </div>
         </section>
@@ -66,13 +74,14 @@
 
         <section class="panel-card help">
           <h2>How to Play</h2>
-          <p>• Drop hex pieces to fill lines in any of the 3 hive directions.</p>
-          <p>• Full lines disappear for points. Bigger combos level you up.</p>
-          <p>• Connected honey clusters of 6+ matching cells also burst away.</p>
-          <p>• Keep the hive clear—don’t let stacks reach the top.</p>
+          <p>• Drop clusters of hexes into a big hex-shaped hive.</p>
+          <p>• Rotate the entire hive in 60° steps to change which edge is “down”.</p>
+          <p>• Fill an entire ring around the center to clear it and score points.</p>
+          <p>• Keep stacking smartly so the hive doesn’t overflow.</p>
           <h2>Controls</h2>
           <p>Keyboard: ← → move, ↑ / X rotate, ↓ soft drop, Space hard drop.</p>
-          <p>Touch: tap left/right to move, top to rotate, bottom to drop.</p>
+          <p>Touch: tap left/right to move, top to rotate piece, bottom to drop.</p>
+          <p>Buttons: Rotate hive (⟲ / ⟳) or Drop.</p>
         </section>
       </aside>
     </main>

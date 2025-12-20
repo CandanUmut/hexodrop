@@ -2,9 +2,8 @@
 // Core game logic, state, and rendering for Hex Hive Drop.
 
 (function (global) {
-  const GRID_WIDTH = 10;
-  const GRID_HEIGHT = 18;
-  const MIN_LINE_LEN = 4;
+  const HIVE_RADIUS = 4;
+  const GRAVITY_DIR = { q: 0, r: 1 };
 
   const GAME_STATES = {
     MENU: "menu",
@@ -21,7 +20,9 @@
   let gameHeight = 800;
   let ctxNext = null;
 
-  let grid = [];
+  let grid = new Map();
+  let rings = [];
+  let allCells = [];
   let currentPiece = null;
   let nextPiece = null;
 
@@ -141,24 +142,65 @@
 
   // Grid helpers
 
-  function createEmptyGrid() {
-    grid = [];
-    for (let q = 0; q < GRID_WIDTH; q++) {
-      const col = [];
-      for (let r = 0; r < GRID_HEIGHT; r++) {
-        col.push(null);
+  function axialKey(q, r) {
+    return `${q},${r}`;
+  }
+
+  function inBounds(q, r) {
+    const s = -q - r;
+    return Math.max(Math.abs(q), Math.abs(r), Math.abs(s)) <= HIVE_RADIUS;
+  }
+
+  function precomputeHive() {
+    rings = [];
+    allCells = [];
+    for (let q = -HIVE_RADIUS; q <= HIVE_RADIUS; q++) {
+      for (let r = -HIVE_RADIUS; r <= HIVE_RADIUS; r++) {
+        if (!inBounds(q, r)) continue;
+        const s = -q - r;
+        const rad = Math.max(Math.abs(q), Math.abs(r), Math.abs(s));
+        if (!rings[rad]) rings[rad] = [];
+        const cell = { q, r };
+        rings[rad].push(cell);
+        allCells.push(cell);
       }
-      grid.push(col);
+    }
+  }
+
+  function createEmptyGrid() {
+    grid = new Map();
+    if (!allCells.length) {
+      precomputeHive();
     }
   }
 
   function isCellInside(q, r) {
-    return q >= 0 && q < GRID_WIDTH && r >= 0 && r < GRID_HEIGHT;
+    return inBounds(q, r);
   }
 
   function isCellEmpty(q, r) {
     if (!isCellInside(q, r)) return false;
-    return grid[q][r] === null;
+    return !grid.has(axialKey(q, r));
+  }
+
+  function isOccupied(q, r) {
+    if (!isCellInside(q, r)) return false;
+    return grid.has(axialKey(q, r));
+  }
+
+  function setCell(q, r, value) {
+    if (!isCellInside(q, r)) return;
+    grid.set(axialKey(q, r), value);
+  }
+
+  function clearCell(q, r) {
+    if (!isCellInside(q, r)) return;
+    grid.delete(axialKey(q, r));
+  }
+
+  function getCell(q, r) {
+    if (!isCellInside(q, r)) return null;
+    return grid.get(axialKey(q, r)) ?? null;
   }
 
   // Piece definitions (relative axial cells around pivot (0,0))
@@ -231,8 +273,8 @@
     return {
       shape,
       colorIndex: shape.colorIndex,
-      pivotQ: Math.floor(GRID_WIDTH / 2),
-      pivotR: 0,
+      pivotQ: 0,
+      pivotR: -HIVE_RADIUS,
       rotation: 0
     };
   }
@@ -287,7 +329,7 @@
   function hardDropCurrentPiece() {
     if (!currentPiece) return;
     let moved = false;
-    while (movePiece(0, 1)) {
+    while (movePiece(GRAVITY_DIR.q, GRAVITY_DIR.r)) {
       moved = true;
     }
     if (moved) {
@@ -303,7 +345,7 @@
     const cells = getPieceCells(currentPiece);
     for (const c of cells) {
       if (isCellInside(c.q, c.r)) {
-        grid[c.q][c.r] = currentPiece.colorIndex;
+        setCell(c.q, c.r, currentPiece.colorIndex);
         cellEffects.push({
           q: c.q,
           r: c.r,
@@ -316,69 +358,15 @@
     }
     currentPiece = null;
     safePlaySound("drop");
-
-    let combo = 0;
-    while (true) {
-      const lineResult = checkLineClears();
-      const honeyResult = findHoneyClusters();
-
-      const combinedSet = new Set();
-      lineResult.toClearSet.forEach((k) => combinedSet.add(k));
-      honeyResult.toClearSet.forEach((k) => combinedSet.add(k));
-
-      if (combinedSet.size === 0) break;
-
-      combo++;
-      const comboMultiplier = 1 + (combo - 1) * 0.4;
-
-      if (lineResult.linesCleared > 0) {
-        linesClearedTotal += lineResult.linesCleared;
-        updateLevelFromLines();
-      }
-
-      const baseLineScore =
-        lineResult.linesCleared === 0
-          ? 0
-          : lineResult.linesCleared === 1
-          ? 100
-          : lineResult.linesCleared === 2
-          ? 300
-          : 600 + (lineResult.linesCleared - 3) * 200;
-
-      const honeyScore = honeyResult.clusters.reduce(
-        (sum, size) => sum + 50 * size,
-        0
-      );
-
-      const addedScore = Math.floor((baseLineScore + honeyScore) * comboMultiplier);
-      score += addedScore;
-
-      if (lineResult.linesCleared > 0 || honeyResult.clusters.length > 0) {
-        safePlaySound("lineClear");
-      }
-
-      combinedSet.forEach((key) => {
-        const [qStr, rStr] = key.split(",");
-        const q = parseInt(qStr, 10);
-        const r = parseInt(rStr, 10);
-        if (!isCellInside(q, r)) return;
-        const colorIndex = grid[q][r];
-        if (colorIndex !== null && colorIndex !== undefined) {
-          cellEffects.push({
-            q,
-            r,
-            colorIndex,
-            type: "clear",
-            timer: CLEAR_EFFECT_DURATION,
-            duration: CLEAR_EFFECT_DURATION
-          });
-        }
-        grid[q][r] = null;
-      });
-
-      applyGravity();
+    const clearedRings = clearFullRings();
+    if (clearedRings > 0) {
+      linesClearedTotal += clearedRings;
+      updateLevelFromLines();
+      const baseScore = 100 * clearedRings;
+      score += baseScore;
+      safePlaySound("lineClear");
     }
-
+    applyGravity();
     spawnNextPieceOrGameOver();
   }
 
@@ -401,19 +389,7 @@
   }
 
   function findSpawnPosition(pieceTemplate) {
-    const candidates = [];
-    const centerQ = Math.floor(GRID_WIDTH / 2);
-    const offsets = [0, 1, -1, 2, -2, 3, -3, 4, -4];
-    const rows = [0, 1];
-
-    for (const r of rows) {
-      for (const off of offsets) {
-        const q = centerQ + off;
-        if (q >= 0 && q < GRID_WIDTH) {
-          candidates.push({ q, r });
-        }
-      }
-    }
+    const candidates = [...allCells].sort((a, b) => a.r - b.r || a.q - b.q);
 
     for (const pos of candidates) {
       const candidate = clonePiece(pieceTemplate);
@@ -437,115 +413,65 @@
     fallInterval = Math.max(minInterval, base - (level - 1) * 0.06);
   }
 
-  function checkLineClears() {
-    const toClearSet = new Set();
-    let linesCleared = 0;
+  function clearFullRings() {
+    let clearedRings = 0;
+    const cellsToClear = [];
 
-    // Helper to mark a line
-    function markLine(coords) {
-      if (coords.length < MIN_LINE_LEN) return;
-      for (const c of coords) {
-        if (!isCellInside(c.q, c.r) || grid[c.q][c.r] === null) {
-          return;
+    for (let rad = 0; rad <= HIVE_RADIUS; rad++) {
+      const ring = rings[rad];
+      if (!ring || ring.length === 0) continue;
+      let full = true;
+      for (const cell of ring) {
+        if (!isOccupied(cell.q, cell.r)) {
+          full = false;
+          break;
         }
       }
-      linesCleared++;
-      for (const c of coords) {
-        toClearSet.add(c.q + "," + c.r);
-      }
-    }
-
-    // 1) Rows: r constant
-    for (let r = 0; r < GRID_HEIGHT; r++) {
-      const coords = [];
-      for (let q = 0; q < GRID_WIDTH; q++) {
-        coords.push({ q, r });
-      }
-      markLine(coords);
-    }
-
-    // 2) Columns: q constant
-    for (let q = 0; q < GRID_WIDTH; q++) {
-      const coords = [];
-      for (let r = 0; r < GRID_HEIGHT; r++) {
-        coords.push({ q, r });
-      }
-      markLine(coords);
-    }
-
-    // 3) Diagonals: q + r = constant
-    const minK = 0;
-    const maxK = GRID_WIDTH + GRID_HEIGHT - 2;
-    for (let k = minK; k <= maxK; k++) {
-      const coords = [];
-      for (let q = 0; q < GRID_WIDTH; q++) {
-        const r = k - q;
-        if (r >= 0 && r < GRID_HEIGHT) {
-          coords.push({ q, r });
-        }
-      }
-      markLine(coords);
-    }
-
-    return { linesCleared, toClearSet };
-  }
-
-  function findHoneyClusters() {
-    const toClearSet = new Set();
-    const clusters = [];
-    const visited = Array.from({ length: GRID_WIDTH }, () =>
-      Array.from({ length: GRID_HEIGHT }, () => false)
-    );
-
-    for (let q = 0; q < GRID_WIDTH; q++) {
-      for (let r = 0; r < GRID_HEIGHT; r++) {
-        if (visited[q][r] || grid[q][r] === null) continue;
-        const colorIndex = grid[q][r];
-        const stack = [{ q, r }];
-        const cluster = [];
-        visited[q][r] = true;
-
-        while (stack.length > 0) {
-          const cell = stack.pop();
-          cluster.push(cell);
-          const neighbors = global.hexNeighbors(cell.q, cell.r);
-          for (const n of neighbors) {
-            if (!isCellInside(n.q, n.r)) continue;
-            if (visited[n.q][n.r]) continue;
-            if (grid[n.q][n.r] === colorIndex) {
-              visited[n.q][n.r] = true;
-              stack.push(n);
-            }
+      if (full) {
+        clearedRings++;
+        for (const cell of ring) {
+          const colorIndex = getCell(cell.q, cell.r);
+          if (colorIndex !== null && colorIndex !== undefined) {
+            cellEffects.push({
+              q: cell.q,
+              r: cell.r,
+              colorIndex,
+              type: "clear",
+              timer: CLEAR_EFFECT_DURATION,
+              duration: CLEAR_EFFECT_DURATION
+            });
           }
-        }
-
-        if (cluster.length >= 6) {
-          clusters.push(cluster.length);
-          for (const c of cluster) {
-            toClearSet.add(c.q + "," + c.r);
-          }
+          cellsToClear.push(cell);
         }
       }
     }
 
-    return { toClearSet, clusters };
+    if (cellsToClear.length === 0) return 0;
+
+    for (const c of cellsToClear) {
+      clearCell(c.q, c.r);
+    }
+
+    return clearedRings;
   }
 
   function applyGravity() {
-    for (let q = 0; q < GRID_WIDTH; q++) {
-      let writeR = GRID_HEIGHT - 1;
-      for (let r = GRID_HEIGHT - 1; r >= 0; r--) {
-        const cell = grid[q][r];
-        if (cell !== null) {
+    for (let q = -HIVE_RADIUS; q <= HIVE_RADIUS; q++) {
+      const minR = Math.max(-HIVE_RADIUS, -HIVE_RADIUS - q);
+      const maxR = Math.min(HIVE_RADIUS, HIVE_RADIUS - q);
+      let writeR = maxR;
+      for (let r = maxR; r >= minR; r--) {
+        const cell = getCell(q, r);
+        if (cell !== null && cell !== undefined) {
           if (writeR !== r) {
-            grid[q][writeR] = cell;
-            grid[q][r] = null;
+            setCell(q, writeR, cell);
+            clearCell(q, r);
           }
           writeR--;
         }
       }
-      for (let r = writeR; r >= 0; r--) {
-        grid[q][r] = null;
+      for (let r = writeR; r >= minR; r--) {
+        clearCell(q, r);
       }
     }
   }
@@ -601,7 +527,7 @@
     fallTimer += deltaTime;
     if (fallTimer >= fallInterval) {
       fallTimer = 0;
-      const moved = movePiece(0, 1);
+      const moved = movePiece(GRAVITY_DIR.q, GRAVITY_DIR.r);
       if (!moved) {
         lockPiece();
       }
@@ -617,29 +543,42 @@
   }
 
   function getGridOrigin() {
-    const cols = GRID_WIDTH;
-    const rows = GRID_HEIGHT;
-    const gridPixelWidth = HEX_SIZE * (1.5 * (cols - 1) + 2);
-    const gridPixelHeight =
-      HEX_SIZE * (Math.sqrt(3) * (rows + (cols - 1) / 2)) + HEX_SIZE;
+    if (!allCells.length) precomputeHive();
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+
+    for (const cell of allCells) {
+      const pos = global.axialToPixel(cell.q, cell.r, 0, 0);
+      minX = Math.min(minX, pos.x - HEX_SIZE);
+      maxX = Math.max(maxX, pos.x + HEX_SIZE);
+      minY = Math.min(minY, pos.y - HEX_SIZE);
+      maxY = Math.max(maxY, pos.y + HEX_SIZE);
+    }
+
+    const width = maxX - minX;
+    const height = maxY - minY;
 
     const margin = 20;
     const availableWidth = gameWidth - margin * 2;
     const availableHeight = gameHeight - margin * 2;
 
-    let scale = Math.min(
-      availableWidth / gridPixelWidth,
-      availableHeight / gridPixelHeight
-    );
+    let scale = Math.min(availableWidth / width, availableHeight / height);
     if (!isFinite(scale) || scale <= 0) scale = 1;
 
-    const scaledWidth = gridPixelWidth * scale;
-    const scaledHeight = gridPixelHeight * scale;
-
-    const originX = (gameWidth - scaledWidth) / 2 + HEX_SIZE * scale;
-    const originY = (gameHeight - scaledHeight) / 2 + HEX_SIZE * scale;
+    const originX = (gameWidth - width * scale) / 2 - minX * scale;
+    const originY = (gameHeight - height * scale) / 2 - minY * scale;
 
     return { originX, originY, scale };
+  }
+
+  function projectCell(q, r, originX, originY, scale) {
+    const base = global.axialToPixel(q, r, 0, 0);
+    return {
+      x: originX + base.x * scale,
+      y: originY + base.y * scale
+    };
   }
 
   function drawHex(ctx, centerX, centerY, size, fillStyle, strokeStyle) {
@@ -669,10 +608,12 @@
 
   function renderGame(ctx) {
     if (!canvas) return;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     const dpr = global.devicePixelRatio || 1;
-    ctx.save();
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, gameWidth, gameHeight);
+
+    ctx.save();
 
     // Background
     ctx.fillStyle = "#050308";
@@ -693,39 +634,28 @@
       }
     }
 
-
     const { originX, originY, scale } = getGridOrigin();
     const hexSize = HEX_SIZE * scale;
 
     // Draw static cells
-    for (let q = 0; q < GRID_WIDTH; q++) {
-      for (let r = 0; r < GRID_HEIGHT; r++) {
-        const pos = global.axialToPixel(q, r, originX, originY);
-        const cell = grid[q][r];
+    for (const cell of allCells) {
+      const pos = projectCell(cell.q, cell.r, originX, originY, scale);
+      const value = getCell(cell.q, cell.r);
 
-        if (cell === null) {
-          // Empty outline
-          drawHex(
-            ctx,
-            pos.x,
-            pos.y,
-            hexSize * 0.94,
-            null,
-            "rgba(255,255,255,0.06)"
-          );
+      if (value === null || value === undefined) {
+        drawHex(ctx, pos.x, pos.y, hexSize * 0.94, null, "rgba(255,255,255,0.06)");
+      } else {
+        const colorIndex = value % HONEY_COLORS.length;
+        const img = images.hexFilled[colorIndex];
+        if (isImageReady(img)) {
+          const sizePx = hexSize * 2;
+          ctx.save();
+          ctx.translate(pos.x - sizePx / 2, pos.y - sizePx / 2);
+          ctx.drawImage(img, 0, 0, sizePx, sizePx);
+          ctx.restore();
         } else {
-          const colorIndex = cell % HONEY_COLORS.length;
-          const img = images.hexFilled[colorIndex];
-          if (isImageReady(img)) {
-            const sizePx = hexSize * 2;
-            ctx.save();
-            ctx.translate(pos.x - sizePx / 2, pos.y - sizePx / 2);
-            ctx.drawImage(img, 0, 0, sizePx, sizePx);
-            ctx.restore();
-          } else {
-            const fill = HONEY_COLORS[colorIndex];
-            drawHex(ctx, pos.x, pos.y, hexSize * 0.94, fill, "#1c0f12");
-          }
+          const fill = HONEY_COLORS[colorIndex];
+          drawHex(ctx, pos.x, pos.y, hexSize * 0.94, fill, "#1c0f12");
         }
       }
     }
@@ -733,14 +663,21 @@
     // Effects overlay
     for (const fx of cellEffects) {
       if (!isCellInside(fx.q, fx.r)) continue;
-      const pos = global.axialToPixel(fx.q, fx.r, originX, originY);
+      const pos = projectCell(fx.q, fx.r, originX, originY, scale);
       const colorIndex = fx.colorIndex % HONEY_COLORS.length;
       const fill = HONEY_COLORS[colorIndex] || HONEY_COLORS[0];
       const t = Math.max(0, Math.min(1, fx.timer / fx.duration));
       const scaleFx = fx.type === "clear" ? 1 + 0.18 * (1 - t) : 1 + 0.12 * (1 - t);
       ctx.save();
       ctx.globalAlpha = fx.type === "clear" ? t : 0.5 + 0.5 * t;
-      drawHex(ctx, pos.x, pos.y, hexSize * 0.96 * scaleFx, fill, "rgba(255,255,255,0.5)");
+      drawHex(
+        ctx,
+        pos.x,
+        pos.y,
+        hexSize * 0.96 * scaleFx,
+        fill,
+        "rgba(255,255,255,0.5)"
+      );
       ctx.restore();
     }
 
@@ -749,7 +686,7 @@
       let ghost = clonePiece(currentPiece);
       while (true) {
         const test = clonePiece(ghost);
-        test.pivotR += 1;
+        test.pivotR += GRAVITY_DIR.r;
         if (canPieceExist(test)) {
           ghost = test;
         } else {
@@ -760,7 +697,7 @@
       ctx.globalAlpha = 0.22;
       for (const c of ghostCells) {
         if (!isCellInside(c.q, c.r)) continue;
-        const pos = global.axialToPixel(c.q, c.r, originX, originY);
+        const pos = projectCell(c.q, c.r, originX, originY, scale);
         const colorIndex = ghost.colorIndex % HONEY_COLORS.length;
         const fill = HONEY_COLORS[colorIndex];
         drawHex(ctx, pos.x, pos.y, hexSize * 0.9, fill, null);
@@ -773,7 +710,7 @@
       const cells = getPieceCells(currentPiece);
       for (const c of cells) {
         if (!isCellInside(c.q, c.r)) continue;
-        const pos = global.axialToPixel(c.q, c.r, originX, originY);
+        const pos = projectCell(c.q, c.r, originX, originY, scale);
         const colorIndex = currentPiece.colorIndex % HONEY_COLORS.length;
         const img = images.hexFilled[colorIndex];
         if (isImageReady(img)) {
@@ -888,9 +825,45 @@
     rotatePiece(-1);
   }
 
+  function rotateHive(times) {
+    const newGrid = new Map();
+    for (const [key, value] of grid.entries()) {
+      const [qStr, rStr] = key.split(",");
+      const q = parseInt(qStr, 10);
+      const r = parseInt(rStr, 10);
+      const rotated = global.rotateAxial(q, r, times);
+      if (inBounds(rotated.q, rotated.r)) {
+        newGrid.set(axialKey(rotated.q, rotated.r), value);
+      }
+    }
+    grid = newGrid;
+
+    if (cellEffects.length > 0) {
+      cellEffects = cellEffects.map((fx) => {
+        const pos = global.rotateAxial(fx.q, fx.r, times);
+        return { ...fx, q: pos.q, r: pos.r };
+      });
+    }
+
+    if (currentPiece) {
+      const pivotRot = global.rotateAxial(currentPiece.pivotQ, currentPiece.pivotR, times);
+      currentPiece.pivotQ = pivotRot.q;
+      currentPiece.pivotR = pivotRot.r;
+      currentPiece.rotation = (currentPiece.rotation + times + 6) % 6;
+    }
+  }
+
+  function rotateHiveLeft() {
+    rotateHive(5);
+  }
+
+  function rotateHiveRight() {
+    rotateHive(1);
+  }
+
   function handleSoftDrop() {
     if (gameState !== GAME_STATES.PLAYING) return;
-    const moved = movePiece(0, 1);
+    const moved = movePiece(GRAVITY_DIR.q, GRAVITY_DIR.r);
     if (!moved) {
       lockPiece();
     }
@@ -899,6 +872,16 @@
   function handleHardDrop() {
     if (gameState !== GAME_STATES.PLAYING) return;
     hardDropCurrentPiece();
+  }
+
+  function handleRotateHiveLeft() {
+    if (gameState !== GAME_STATES.PLAYING) return;
+    rotateHiveLeft();
+  }
+
+  function handleRotateHiveRight() {
+    if (gameState !== GAME_STATES.PLAYING) return;
+    rotateHiveRight();
   }
 
   const HexHiveGame = {
@@ -915,6 +898,8 @@
     handleRotateCCW,
     handleSoftDrop,
     handleHardDrop,
+    handleRotateHiveLeft,
+    handleRotateHiveRight,
     getStats,
     getState,
     GAME_STATES
