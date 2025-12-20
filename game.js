@@ -544,18 +544,31 @@
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
     // Background
+        // Background
     ctx.fillStyle = "#050308";
     ctx.fillRect(0, 0, gameWidth, gameHeight);
 
-    if (images.hiveBg && images.hiveBg.complete) {
-      const pattern = ctx.createPattern(images.hiveBg, "repeat");
-      if (pattern) {
-        ctx.globalAlpha = 0.32;
-        ctx.fillStyle = pattern;
-        ctx.fillRect(0, 0, gameWidth, gameHeight);
-        ctx.globalAlpha = 1;
+    const bgImg = images.hiveBg;
+    if (
+      bgImg &&
+      bgImg.complete &&
+      typeof bgImg.naturalWidth === "number" &&
+      bgImg.naturalWidth > 0
+    ) {
+      try {
+        const pattern = ctx.createPattern(bgImg, "repeat");
+        if (pattern) {
+          ctx.globalAlpha = 0.32;
+          ctx.fillStyle = pattern;
+          ctx.fillRect(0, 0, gameWidth, gameHeight);
+          ctx.globalAlpha = 1;
+        }
+      } catch (e) {
+        // If createPattern fails (broken or tainted image), just skip pattern
+        // console.warn("Hive background pattern failed:", e);
       }
     }
+
 
     const { originX, originY, scale } = getGridOrigin();
     const hexSize = HEX_SIZE * scale;
