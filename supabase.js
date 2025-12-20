@@ -3,8 +3,9 @@
 // Game should still run if Supabase is not configured.
 
 (function (global) {
-  const SUPABASE_URL = "https://YOUR_PROJECT_ID.supabase.co";
-  const SUPABASE_ANON_KEY = "YOUR_PUBLIC_ANON_KEY";
+  const SUPABASE_URL = "https://rnatxpcjqszgjlvznhwd.supabase.co";
+  const SUPABASE_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJuYXR4cGNqcXN6Z2psdnpuaHdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzMTA4OTEsImV4cCI6MjA4MDg4Njg5MX0.rwuFyq0XdXDG822d2lUqdxHvTq4OAIUtdXebh0aXCCc";
 
   let supabaseClient = null;
   let playerId = null;
@@ -23,8 +24,8 @@
         typeof supabase !== "undefined" &&
         SUPABASE_URL &&
         SUPABASE_ANON_KEY &&
-        SUPABASE_URL !== "https://YOUR_PROJECT_ID.supabase.co" &&
-        SUPABASE_ANON_KEY !== "YOUR_PUBLIC_ANON_KEY"
+        SUPABASE_URL !== "https://rnatxpcjqszgjlvznhwd.supabase.co" &&
+        SUPABASE_ANON_KEY !== "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJuYXR4cGNqcXN6Z2psdnpuaHdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzMTA4OTEsImV4cCI6MjA4MDg4Njg5MX0.rwuFyq0XdXDG822d2lUqdxHvTq4OAIUtdXebh0aXCCc"
       ) {
         supabaseClient = supabase.createClient(
           SUPABASE_URL,
