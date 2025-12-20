@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Hex Hive Drop</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="app-header">
+      <div class="logo-wrap">
+        <img src="./assets/img/logo.png" alt="Hex Hive Drop" onerror="this.style.display='none';" />
+        <h1>Hex Hive Drop</h1>
+      </div>
+      <div class="subtitle">
+        <span class="bee-icon">🐝</span>
+        <span>Stack the honeycomb, clear the hive, don’t overflow.</span>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <div class="game-container">
+        <canvas id="game-canvas"></canvas>
+
+        <!-- Touch / pointer control zones -->
+        <div id="touch-left" class="touch-zone left"></div>
+        <div id="touch-right" class="touch-zone right"></div>
+        <div id="touch-top" class="touch-zone top"></div>
+        <div id="touch-bottom" class="touch-zone bottom"></div>
+      </div>
+
+      <aside class="side-panel">
+        <section class="panel-card stats">
+          <h2>Stats</h2>
+          <div class="stat-row">
+            <span>Score</span>
+            <span id="stat-score">0</span>
+          </div>
+          <div class="stat-row">
+            <span>Level</span>
+            <span id="stat-level">1</span>
+          </div>
+          <div class="stat-row">
+            <span>Lines</span>
+            <span id="stat-lines">0</span>
+          </div>
+        </section>
+
+        <section class="panel-card next-piece">
+          <h2>Next Piece</h2>
+          <canvas id="next-canvas" width="120" height="120"></canvas>
+        </section>
+
+        <section class="panel-card controls">
+          <h2>Game</h2>
+          <div class="button-row">
+            <button id="btn-play">Play</button>
+            <button id="btn-pause">Pause</button>
+          </div>
+          <div class="button-row">
+            <button id="btn-restart">Restart</button>
+            <button id="btn-leaderboard">Leaderboard</button>
+          </div>
+        </section>
+
+        <section class="panel-card help">
+          <h2>Controls</h2>
+          <p>Keyboard: ← → move, ↑ / X rotate, ↓ soft drop, Space hard drop.</p>
+          <p>Touch: tap left/right to move, top to rotate, bottom to drop.</p>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Nickname modal -->
+  <div id="nickname-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <h2>Welcome to Hex Hive Drop</h2>
+      <p>Choose a nickname for the leaderboard:</p>
+      <input id="nickname-input" type="text" maxlength="20" placeholder="BeeMaster" />
+      <div class="modal-actions">
+        <button id="nickname-save">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leaderboard modal -->
+  <div id="leaderboard-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <h2>Leaderboard</h2>
+      <div id="leaderboard-list" class="leaderboard-list">
+        <!-- Filled dynamically -->
+      </div>
+      <div class="modal-actions">
+        <button id="leaderboard-close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game over modal -->
+  <div id="gameover-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <h2>Game Over</h2>
+      <p>Score: <span id="gameover-score">0</span></p>
+      <p>Level: <span id="gameover-level">1</span></p>
+      <p>Lines: <span id="gameover-lines">0</span></p>
+      <div class="modal-actions">
+        <button id="gameover-restart">Play Again</button>
+        <button id="gameover-menu">Back to Menu</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="hexmath.js"></script>
+  <script src="game.js"></script>
+  <script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="supabase.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>
