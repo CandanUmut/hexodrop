@@ -55,26 +55,44 @@
   function safePlaySound(soundKey) {
     const s = sounds[soundKey];
     if (!s) return;
+
     try {
       s.currentTime = 0;
-      s.play();
+      const p = s.play();
+      if (p && typeof p.catch === "function") {
+        p.catch((err) => {
+          // Swallow audio play errors (unsupported format, no user gesture, etc.)
+          // console.warn("SFX play failed:", err);
+        });
+      }
     } catch (e) {
-      // ignore
+      // Ignore synchronous errors
+      // console.warn("SFX play threw:", e);
     }
   }
 
   function safeLoopBgm() {
     if (!sounds.bgm) return;
     if (bgmStarted) return;
+
     bgmStarted = true;
     try {
       sounds.bgm.loop = true;
       sounds.bgm.volume = 0.45;
-      sounds.bgm.play();
+      const p = sounds.bgm.play();
+      if (p && typeof p.catch === "function") {
+        p.catch((err) => {
+          // If play fails (e.g., unsupported source), allow retry later
+          // console.warn("BGM play failed:", err);
+          bgmStarted = false;
+        });
+      }
     } catch (e) {
-      // ignore
+      // console.warn("BGM play threw:", e);
+      bgmStarted = false;
     }
   }
+
 
   function loadImage(src) {
     const img = new Image();
