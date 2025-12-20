@@ -30,6 +30,10 @@
   let level = 1;
   let linesClearedTotal = 0;
 
+  let cellEffects = [];
+  const LANDING_EFFECT_DURATION = 0.18;
+  const CLEAR_EFFECT_DURATION = 0.22;
+
   let fallInterval = 0.9;
   let fallTimer = 0;
 
@@ -52,23 +56,21 @@
 
   let bgmStarted = false;
 
+  function playAudioSafe(a) {
+    if (!a) return;
+    try {
+      a.currentTime = 0;
+      const p = a.play();
+      if (p && typeof p.catch === "function") {
+        p.catch(() => {});
+      }
+    } catch (e) {}
+  }
+
   function safePlaySound(soundKey) {
     const s = sounds[soundKey];
     if (!s) return;
-
-    try {
-      s.currentTime = 0;
-      const p = s.play();
-      if (p && typeof p.catch === "function") {
-        p.catch((err) => {
-          // Swallow audio play errors (unsupported format, no user gesture, etc.)
-          // console.warn("SFX play failed:", err);
-        });
-      }
-    } catch (e) {
-      // Ignore synchronous errors
-      // console.warn("SFX play threw:", e);
-    }
+    playAudioSafe(s);
   }
 
   function safeLoopBgm() {
@@ -81,14 +83,11 @@
       sounds.bgm.volume = 0.45;
       const p = sounds.bgm.play();
       if (p && typeof p.catch === "function") {
-        p.catch((err) => {
-          // If play fails (e.g., unsupported source), allow retry later
-          // console.warn("BGM play failed:", err);
+        p.catch(() => {
           bgmStarted = false;
         });
       }
     } catch (e) {
-      // console.warn("BGM play threw:", e);
       bgmStarted = false;
     }
   }
@@ -96,6 +95,9 @@
 
   function loadImage(src) {
     const img = new Image();
+    img.onerror = () => {
+      img._broken = true;
+    };
     img.src = src;
     return img;
   }
@@ -107,6 +109,17 @@
     } catch (e) {
       return null;
     }
+  }
+
+  function isImageReady(img) {
+    return (
+      img &&
+      !img._broken &&
+      img.complete === true &&
+      typeof img.naturalWidth === "number" &&
+      img.naturalWidth > 0 &&
+      img.naturalHeight > 0
+    );
   }
 
   function initAssets() {
@@ -291,26 +304,79 @@
     for (const c of cells) {
       if (isCellInside(c.q, c.r)) {
         grid[c.q][c.r] = currentPiece.colorIndex;
+        cellEffects.push({
+          q: c.q,
+          r: c.r,
+          colorIndex: currentPiece.colorIndex,
+          type: "landing",
+          timer: LANDING_EFFECT_DURATION,
+          duration: LANDING_EFFECT_DURATION
+        });
       }
     }
     currentPiece = null;
     safePlaySound("drop");
 
-    // Cascading line clears
-    let totalLinesCleared = 0;
     let combo = 0;
     while (true) {
-      const cleared = checkLineClears();
-      if (cleared <= 0) break;
+      const lineResult = checkLineClears();
+      const honeyResult = findHoneyClusters();
+
+      const combinedSet = new Set();
+      lineResult.toClearSet.forEach((k) => combinedSet.add(k));
+      honeyResult.toClearSet.forEach((k) => combinedSet.add(k));
+
+      if (combinedSet.size === 0) break;
+
       combo++;
-      totalLinesCleared += cleared;
-      const base =
-        cleared === 1 ? 100 : cleared === 2 ? 300 : 600 + (cleared - 3) * 200;
       const comboMultiplier = 1 + (combo - 1) * 0.4;
-      score += Math.floor(base * comboMultiplier);
-      linesClearedTotal += cleared;
-      updateLevelFromLines();
-      safePlaySound("lineClear");
+
+      if (lineResult.linesCleared > 0) {
+        linesClearedTotal += lineResult.linesCleared;
+        updateLevelFromLines();
+      }
+
+      const baseLineScore =
+        lineResult.linesCleared === 0
+          ? 0
+          : lineResult.linesCleared === 1
+          ? 100
+          : lineResult.linesCleared === 2
+          ? 300
+          : 600 + (lineResult.linesCleared - 3) * 200;
+
+      const honeyScore = honeyResult.clusters.reduce(
+        (sum, size) => sum + 50 * size,
+        0
+      );
+
+      const addedScore = Math.floor((baseLineScore + honeyScore) * comboMultiplier);
+      score += addedScore;
+
+      if (lineResult.linesCleared > 0 || honeyResult.clusters.length > 0) {
+        safePlaySound("lineClear");
+      }
+
+      combinedSet.forEach((key) => {
+        const [qStr, rStr] = key.split(",");
+        const q = parseInt(qStr, 10);
+        const r = parseInt(rStr, 10);
+        if (!isCellInside(q, r)) return;
+        const colorIndex = grid[q][r];
+        if (colorIndex !== null && colorIndex !== undefined) {
+          cellEffects.push({
+            q,
+            r,
+            colorIndex,
+            type: "clear",
+            timer: CLEAR_EFFECT_DURATION,
+            duration: CLEAR_EFFECT_DURATION
+          });
+        }
+        grid[q][r] = null;
+      });
+
+      applyGravity();
     }
 
     spawnNextPieceOrGameOver();
@@ -320,15 +386,44 @@
     if (!nextPiece) {
       nextPiece = createRandomPiece();
     }
-    currentPiece = createPieceFromShape(nextPiece.shape);
-    currentPiece.colorIndex = nextPiece.colorIndex;
+    const basePiece = createPieceFromShape(nextPiece.shape);
+    basePiece.colorIndex = nextPiece.colorIndex;
 
+    const spawnPiece = findSpawnPosition(basePiece);
     nextPiece = createRandomPiece();
 
-    if (!canPieceExist(currentPiece)) {
+    if (spawnPiece) {
+      currentPiece = spawnPiece;
+    } else {
       gameState = GAME_STATES.GAMEOVER;
       safePlaySound("gameOver");
     }
+  }
+
+  function findSpawnPosition(pieceTemplate) {
+    const candidates = [];
+    const centerQ = Math.floor(GRID_WIDTH / 2);
+    const offsets = [0, 1, -1, 2, -2, 3, -3, 4, -4];
+    const rows = [0, 1];
+
+    for (const r of rows) {
+      for (const off of offsets) {
+        const q = centerQ + off;
+        if (q >= 0 && q < GRID_WIDTH) {
+          candidates.push({ q, r });
+        }
+      }
+    }
+
+    for (const pos of candidates) {
+      const candidate = clonePiece(pieceTemplate);
+      candidate.pivotQ = pos.q;
+      candidate.pivotR = pos.r;
+      if (canPieceExist(candidate)) {
+        return candidate;
+      }
+    }
+    return null;
   }
 
   function updateLevelFromLines() {
@@ -392,21 +487,51 @@
       markLine(coords);
     }
 
-    if (toClearSet.size === 0) {
-      return 0;
+    return { linesCleared, toClearSet };
+  }
+
+  function findHoneyClusters() {
+    const toClearSet = new Set();
+    const clusters = [];
+    const visited = Array.from({ length: GRID_WIDTH }, () =>
+      Array.from({ length: GRID_HEIGHT }, () => false)
+    );
+
+    for (let q = 0; q < GRID_WIDTH; q++) {
+      for (let r = 0; r < GRID_HEIGHT; r++) {
+        if (visited[q][r] || grid[q][r] === null) continue;
+        const colorIndex = grid[q][r];
+        const stack = [{ q, r }];
+        const cluster = [];
+        visited[q][r] = true;
+
+        while (stack.length > 0) {
+          const cell = stack.pop();
+          cluster.push(cell);
+          const neighbors = global.hexNeighbors(cell.q, cell.r);
+          for (const n of neighbors) {
+            if (!isCellInside(n.q, n.r)) continue;
+            if (visited[n.q][n.r]) continue;
+            if (grid[n.q][n.r] === colorIndex) {
+              visited[n.q][n.r] = true;
+              stack.push(n);
+            }
+          }
+        }
+
+        if (cluster.length >= 6) {
+          clusters.push(cluster.length);
+          for (const c of cluster) {
+            toClearSet.add(c.q + "," + c.r);
+          }
+        }
+      }
     }
 
-    // Clear cells
-    toClearSet.forEach((key) => {
-      const [qStr, rStr] = key.split(",");
-      const q = parseInt(qStr, 10);
-      const r = parseInt(rStr, 10);
-      if (isCellInside(q, r)) {
-        grid[q][r] = null;
-      }
-    });
+    return { toClearSet, clusters };
+  }
 
-    // Apply gravity (down along +r)
+  function applyGravity() {
     for (let q = 0; q < GRID_WIDTH; q++) {
       let writeR = GRID_HEIGHT - 1;
       for (let r = GRID_HEIGHT - 1; r >= 0; r--) {
@@ -423,8 +548,6 @@
         grid[q][r] = null;
       }
     }
-
-    return linesCleared;
   }
 
   // State management
@@ -439,6 +562,7 @@
     linesClearedTotal = 0;
     fallInterval = 0.9;
     gameState = GAME_STATES.MENU;
+    cellEffects = [];
   }
 
   function startGame() {
@@ -452,6 +576,7 @@
       level = 1;
       linesClearedTotal = 0;
       fallInterval = 0.9;
+      cellEffects = [];
       spawnNextPieceOrGameOver();
     }
     gameState = GAME_STATES.PLAYING;
@@ -469,6 +594,7 @@
   // Game loop update & render
 
   function updateGame(deltaTime) {
+    tickEffects(deltaTime);
     if (gameState !== GAME_STATES.PLAYING) return;
     if (!currentPiece) return;
 
@@ -480,6 +606,14 @@
         lockPiece();
       }
     }
+  }
+
+  function tickEffects(deltaTime) {
+    if (!deltaTime) return;
+    for (const fx of cellEffects) {
+      fx.timer -= deltaTime;
+    }
+    cellEffects = cellEffects.filter((fx) => fx.timer > 0);
   }
 
   function getGridOrigin() {
@@ -535,26 +669,17 @@
 
   function renderGame(ctx) {
     if (!canvas) return;
-    ctx.save();
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
     const dpr = global.devicePixelRatio || 1;
-    ctx.scale(1 / dpr, 1 / dpr);
-    ctx.clearRect(0, 0, gameWidth * dpr, gameHeight * dpr);
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, gameWidth, gameHeight);
 
     // Background
-        // Background
     ctx.fillStyle = "#050308";
     ctx.fillRect(0, 0, gameWidth, gameHeight);
 
     const bgImg = images.hiveBg;
-    if (
-      bgImg &&
-      bgImg.complete &&
-      typeof bgImg.naturalWidth === "number" &&
-      bgImg.naturalWidth > 0
-    ) {
+    if (isImageReady(bgImg)) {
       try {
         const pattern = ctx.createPattern(bgImg, "repeat");
         if (pattern) {
@@ -564,8 +689,7 @@
           ctx.globalAlpha = 1;
         }
       } catch (e) {
-        // If createPattern fails (broken or tainted image), just skip pattern
-        // console.warn("Hive background pattern failed:", e);
+        // Ignore background errors
       }
     }
 
@@ -592,7 +716,7 @@
         } else {
           const colorIndex = cell % HONEY_COLORS.length;
           const img = images.hexFilled[colorIndex];
-          if (img && img.complete) {
+          if (isImageReady(img)) {
             const sizePx = hexSize * 2;
             ctx.save();
             ctx.translate(pos.x - sizePx / 2, pos.y - sizePx / 2);
@@ -604,6 +728,20 @@
           }
         }
       }
+    }
+
+    // Effects overlay
+    for (const fx of cellEffects) {
+      if (!isCellInside(fx.q, fx.r)) continue;
+      const pos = global.axialToPixel(fx.q, fx.r, originX, originY);
+      const colorIndex = fx.colorIndex % HONEY_COLORS.length;
+      const fill = HONEY_COLORS[colorIndex] || HONEY_COLORS[0];
+      const t = Math.max(0, Math.min(1, fx.timer / fx.duration));
+      const scaleFx = fx.type === "clear" ? 1 + 0.18 * (1 - t) : 1 + 0.12 * (1 - t);
+      ctx.save();
+      ctx.globalAlpha = fx.type === "clear" ? t : 0.5 + 0.5 * t;
+      drawHex(ctx, pos.x, pos.y, hexSize * 0.96 * scaleFx, fill, "rgba(255,255,255,0.5)");
+      ctx.restore();
     }
 
     // Draw ghost piece
@@ -638,7 +776,7 @@
         const pos = global.axialToPixel(c.q, c.r, originX, originY);
         const colorIndex = currentPiece.colorIndex % HONEY_COLORS.length;
         const img = images.hexFilled[colorIndex];
-        if (img && img.complete) {
+        if (isImageReady(img)) {
           const sizePx = hexSize * 2;
           ctx.save();
           ctx.translate(pos.x - sizePx / 2, pos.y - sizePx / 2);
@@ -682,7 +820,7 @@
       const y = centerY + (rotated.r + rotated.q / 2) * size * Math.sqrt(3);
       const colorIndex = nextPiece.colorIndex % HONEY_COLORS.length;
       const img = images.hexFilled[colorIndex];
-      if (img && img.complete) {
+      if (isImageReady(img)) {
         const sizePx = size * 2;
         ctxNext.save();
         ctxNext.translate(x - sizePx / 2, y - sizePx / 2);

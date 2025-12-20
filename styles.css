@@ -108,6 +108,8 @@ body {
   border: var(--border-subtle);
   box-shadow: var(--shadow-soft);
   overflow: hidden;
+  min-height: 60vh;
+  aspect-ratio: 9 / 16;
 }
 
 #game-canvas {
@@ -165,7 +167,7 @@ body {
 .panel-card {
   background: var(--bg-card);
   border-radius: var(--radius-xl);
-  padding: 10px 12px;
+  padding: 12px 14px;
   border: var(--border-subtle);
   box-shadow: var(--shadow-soft);
 }
@@ -187,8 +189,19 @@ body {
 }
 
 .stats .stat-row span:last-child {
-  font-weight: 600;
+  font-weight: 700;
   color: var(--accent-honey);
+  font-size: 1.1rem;
+}
+
+.stat-value {
+  display: inline-block;
+  transition: transform var(--transition-fast), text-shadow var(--transition-fast);
+}
+
+.stat-value.bump {
+  transform: scale(1.08);
+  text-shadow: 0 0 10px rgba(246, 196, 83, 0.65);
 }
 
 .next-piece {
@@ -250,7 +263,8 @@ button:disabled {
 
 .help p {
   margin: 4px 0;
-  font-size: 0.8rem;
+  font-size: 0.88rem;
+  line-height: 1.4;
   color: var(--text-muted);
 }
 
