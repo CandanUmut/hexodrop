@@ -30,6 +30,9 @@
   let statScore;
   let statLevel;
   let statLines;
+  let lastStatValues = { score: null, level: null, lines: null };
+
+  const statFlashTimers = new Map();
 
   let btnPlay;
   let btnPause;
@@ -74,7 +77,8 @@
   }
 
   function resizeCanvas() {
-    const rect = canvas.getBoundingClientRect();
+    const target = canvas.parentElement || canvas;
+    const rect = target.getBoundingClientRect();
     const dpr = global.devicePixelRatio || 1;
     canvas.width = rect.width * dpr;
     canvas.height = rect.height * dpr;
@@ -85,6 +89,7 @@
   function setupButtons() {
     btnPlay.addEventListener("click", () => {
       HexHiveGame.startGame();
+      resetStatTracking();
       updateButtonStates();
     });
 
@@ -96,6 +101,7 @@
     btnRestart.addEventListener("click", () => {
       HexHiveGame.resetGame();
       HexHiveGame.startGame();
+      resetStatTracking();
       hideModal(gameoverModal);
       updateButtonStates();
     });
@@ -199,12 +205,14 @@
     gameoverRestartBtn.addEventListener("click", () => {
       HexHiveGame.resetGame();
       HexHiveGame.startGame();
+      resetStatTracking();
       hideModal(gameoverModal);
       updateButtonStates();
     });
 
     gameoverMenuBtn.addEventListener("click", () => {
       HexHiveGame.resetGame();
+      resetStatTracking();
       hideModal(gameoverModal);
       updateButtonStates();
     });
@@ -258,9 +266,47 @@
 
   function updateStatsPanel() {
     const stats = HexHiveGame.getStats();
-    statScore.textContent = stats.score;
-    statLevel.textContent = stats.level;
-    statLines.textContent = stats.lines;
+    applyStatValue(statScore, "score", stats.score);
+    applyStatValue(statLevel, "level", stats.level);
+    applyStatValue(statLines, "lines", stats.lines);
+  }
+
+  function resetStatTracking() {
+    const stats = HexHiveGame.getStats();
+    lastStatValues = {
+      score: stats.score,
+      level: stats.level,
+      lines: stats.lines
+    };
+    statFlashTimers.forEach((t) => clearTimeout(t));
+    statFlashTimers.clear();
+    [statScore, statLevel, statLines].forEach((el) => {
+      if (el) el.classList.remove("bump");
+    });
+  }
+
+  function applyStatValue(el, key, value) {
+    if (!el) return;
+    const previous = lastStatValues[key];
+    el.textContent = value;
+    if (previous !== null && value > previous) {
+      triggerStatFlash(el);
+    }
+    lastStatValues[key] = value;
+  }
+
+  function triggerStatFlash(el) {
+    el.classList.remove("bump");
+    void el.offsetWidth;
+    el.classList.add("bump");
+    if (statFlashTimers.has(el)) {
+      clearTimeout(statFlashTimers.get(el));
+    }
+    const timer = setTimeout(() => {
+      el.classList.remove("bump");
+      statFlashTimers.delete(el);
+    }, 220);
+    statFlashTimers.set(el, timer);
   }
 
   async function handleGameStateChange(newState) {
@@ -315,6 +361,7 @@
     initDom();
     resizeCanvas();
     HexHiveGame.initGame(canvas, nextCanvas);
+    resetStatTracking();
     updateButtonStates();
     lastGameState = HexHiveGame.getState();
 
