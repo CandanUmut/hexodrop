@@ -38,6 +38,9 @@
   let btnPause;
   let btnRestart;
   let btnLeaderboard;
+  let btnRotateHiveLeft;
+  let btnDrop;
+  let btnRotateHiveRight;
 
   function initDom() {
     canvas = document.getElementById("game-canvas");
@@ -67,21 +70,27 @@
     btnPause = document.getElementById("btn-pause");
     btnRestart = document.getElementById("btn-restart");
     btnLeaderboard = document.getElementById("btn-leaderboard");
+    btnRotateHiveLeft = document.getElementById("btn-rotate-hive-left");
+    btnDrop = document.getElementById("btn-drop");
+    btnRotateHiveRight = document.getElementById("btn-rotate-hive-right");
 
     setupButtons();
     setupKeyboard();
     setupTouchZones();
+    setupMobileControls();
     setupNicknameModal();
     setupLeaderboardModal();
     setupGameoverModal();
   }
 
   function resizeCanvas() {
-    const target = canvas.parentElement || canvas;
-    const rect = target.getBoundingClientRect();
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
     const dpr = global.devicePixelRatio || 1;
+
     canvas.width = rect.width * dpr;
     canvas.height = rect.height * dpr;
+
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     HexHiveGame.setSize(rect.width, rect.height);
   }
@@ -171,6 +180,34 @@
     attach(rightZone, () => HexHiveGame.handleMoveRight());
     attach(topZone, () => HexHiveGame.handleRotateCW());
     attach(bottomZone, () => HexHiveGame.handleSoftDrop());
+  }
+
+  function setupMobileControls() {
+    if (btnRotateHiveLeft) {
+      btnRotateHiveLeft.addEventListener("click", () => {
+        HexHiveGame.handleRotateHiveLeft();
+      });
+    }
+
+    if (btnDrop) {
+      btnDrop.addEventListener("click", () => {
+        const state = HexHiveGame.getState();
+        if (state === HexHiveGame.GAME_STATES.MENU) {
+          HexHiveGame.startGame();
+        } else if (state === HexHiveGame.GAME_STATES.GAMEOVER) {
+          HexHiveGame.resetGame();
+          HexHiveGame.startGame();
+        } else if (state === HexHiveGame.GAME_STATES.PLAYING) {
+          HexHiveGame.handleHardDrop();
+        }
+      });
+    }
+
+    if (btnRotateHiveRight) {
+      btnRotateHiveRight.addEventListener("click", () => {
+        HexHiveGame.handleRotateHiveRight();
+      });
+    }
   }
 
   function setupNicknameModal() {
@@ -366,6 +403,10 @@
     lastGameState = HexHiveGame.getState();
 
     window.addEventListener("resize", () => {
+      resizeCanvas();
+    });
+
+    window.addEventListener("load", () => {
       resizeCanvas();
     });
 
