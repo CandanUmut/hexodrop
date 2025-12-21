@@ -55,6 +55,35 @@
   let btnPieceRotateCCW;
   let btnSoftDrop;
 
+  function setupGestureGuards() {
+    document.addEventListener(
+      "gesturestart",
+      (e) => e.preventDefault(),
+      { passive: false }
+    );
+    document.addEventListener(
+      "gesturechange",
+      (e) => e.preventDefault(),
+      { passive: false }
+    );
+    document.addEventListener(
+      "gestureend",
+      (e) => e.preventDefault(),
+      { passive: false }
+    );
+
+    let lastTouchEnd = 0;
+    document.addEventListener(
+      "touchend",
+      (e) => {
+        const now = Date.now();
+        if (now - lastTouchEnd <= 250) e.preventDefault();
+        lastTouchEnd = now;
+      },
+      { passive: false }
+    );
+  }
+
   function initDom() {
     canvas = document.getElementById("game-canvas");
     nextCanvas = document.getElementById("next-canvas");
@@ -512,6 +541,7 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
+    setupGestureGuards();
     initDom();
     resizeCanvas();
     HexHiveGame.initGame(canvas, nextCanvas);
