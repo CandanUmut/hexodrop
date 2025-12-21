@@ -650,15 +650,13 @@
     nextPiece = createRandomPiece();
   }
 
-  const CANONICAL_DOWN_INDEX = 5; // use (0,1) as canonical down
-
   function stepsToCanonicalDown() {
-    return ((CANONICAL_DOWN_INDEX - gravityDirIndex) % 6 + 6) % 6;
-  }
-
-  function canonicalRowKey(prim) {
-    // Flat-top axialToPixel y ∝ (r + q/2). Multiply by 2 to keep integer.
-    return prim.r * 2 + prim.q;
+    const g = HEX_DIRECTIONS[gravityDirIndex] || { q: 0, r: 1 };
+    for (let s = 0; s < 6; s++) {
+      const rot = global.rotateAxial(g.q, g.r, s);
+      if (rot.q === 0 && rot.r === 1) return s;
+    }
+    return 0;
   }
 
   // Clear “rows” perpendicular to gravity direction, only on donut cells
@@ -670,7 +668,7 @@
 
     for (const cell of boardCells) {
       const prim = global.rotateAxial(cell.q, cell.r, steps);
-      const rowKey = canonicalRowKey(prim);
+      const rowKey = prim.r;
       let row = rows.get(rowKey);
       if (!row) {
         row = { cellsOrig: [], cellsPrim: [], occupied: 0 };
@@ -695,6 +693,9 @@
       }
       const isFull = rowSize > 0 && row.occupied === rowSize;
       if (isFull) {
+        if (DEBUG) {
+          debugLog("[HexHive][ROW_FULL]", { rowKey, rowSize, occupied: row.occupied });
+        }
         clearedRowKeys.push(rowKey);
         for (const cell of row.cellsOrig) {
           const colorIndex = getCell(cell.q, cell.r);
@@ -725,7 +726,8 @@
       clearCell(c.q, c.r);
     }
 
-    applyRowShiftAfterClear(steps, clearedRowKeys);
+    const inverseSteps = (6 - steps) % 6;
+    applyGravityCanonical(steps, inverseSteps);
     hiveShakeTime = Math.max(hiveShakeTime, HIVE_SHAKE_DURATION);
 
     if (DEBUG) {
