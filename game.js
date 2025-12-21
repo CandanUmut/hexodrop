@@ -620,7 +620,7 @@
     currentPiece = null;
     safePlaySound("drop");
 
-    const clearedLines = clearFullLines();
+    const clearedLines = resolveClearsAndCollapse();
     if (clearedLines > 0) {
       linesClearedTotal += clearedLines;
       updateLevelFromLines();
@@ -660,155 +660,102 @@
   }
 
   // Clear “rows” perpendicular to gravity direction, only on donut cells
-  function clearFullLines() {
-    if (!HEX_DIRECTIONS[gravityDirIndex]) return 0;
-
-    const steps = stepsToCanonicalDown();
-    const rows = new Map(); // r' -> { cellsOrig: [], cellsPrim: [], occupied }
+  // Rotation-independent full-line detection across axial families (q, r, s)
+  function findFullLinesAxial() {
+    const families = [
+      { axis: "q", map: new Map(), keyFn: (cell) => cell.q },
+      { axis: "r", map: new Map(), keyFn: (cell) => cell.r },
+      { axis: "s", map: new Map(), keyFn: (cell) => -cell.q - cell.r }
+    ];
 
     for (const cell of boardCells) {
-      const prim = global.rotateAxial(cell.q, cell.r, steps);
-      const rowKey = prim.r;
-      let row = rows.get(rowKey);
-      if (!row) {
-        row = { cellsOrig: [], cellsPrim: [], occupied: 0 };
-        rows.set(rowKey, row);
-      }
-      row.cellsOrig.push(cell);
-      row.cellsPrim.push(prim);
-      if (isOccupied(cell.q, cell.r)) {
-        row.occupied++;
+      for (const family of families) {
+        const key = family.keyFn(cell);
+        let line = family.map.get(key);
+        if (!line) {
+          line = { key, cells: [] };
+          family.map.set(key, line);
+        }
+        line.cells.push(cell);
       }
     }
 
-    const cellsToClear = [];
-    const clearedRowKeys = [];
-    const rowDebug = [];
+    const cellsToClear = new Set();
+    const linesMeta = [];
 
-    for (const [rowKey, row] of rows.entries()) {
-      const rowSize = row.cellsOrig.length;
-      if (DEBUG && row.occupied === rowSize - 1) {
-        const missingCells = row.cellsOrig.filter((c) => !isOccupied(c.q, c.r));
-        debugLog("[HexHive][ROW_ALMOST]", { rowKey, rowSize, occupied: row.occupied, missingCells });
-      }
-      const isFull = rowSize > 0 && row.occupied === rowSize;
-      if (isFull) {
-        if (DEBUG) {
-          debugLog("[HexHive][ROW_FULL]", { rowKey, rowSize, occupied: row.occupied });
-        }
-        clearedRowKeys.push(rowKey);
-        for (const cell of row.cellsOrig) {
-          const colorIndex = getCell(cell.q, cell.r);
-          if (colorIndex !== null && colorIndex !== undefined) {
-            cellEffects.push({
-              q: cell.q,
-              r: cell.r,
-              colorIndex,
-              type: "clear",
-              timer: CLEAR_EFFECT_DURATION,
-              duration: CLEAR_EFFECT_DURATION
-            });
+    for (const family of families) {
+      for (const [, line] of family.map) {
+        const seen = new Set();
+        let occupied = 0;
+
+        for (const cell of line.cells) {
+          const key = axialKey(cell.q, cell.r);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          if (isOccupied(cell.q, cell.r)) {
+            occupied++;
           }
-          cellsToClear.push(cell);
+        }
+
+        const lineSize = seen.size;
+        const isFull = lineSize > 0 && occupied === lineSize;
+        if (isFull) {
+          linesMeta.push({ axis: family.axis, key: line.key, lineSize, occupied });
+          for (const cell of line.cells) {
+            cellsToClear.add(axialKey(cell.q, cell.r));
+          }
         }
       }
-      rowDebug.push({
-        rowKey,
-        rowSize,
-        occupied: row.occupied,
-        sample: row.cellsOrig.slice(0, 3).map((c) => ({ q: c.q, r: c.r }))
-      });
     }
 
-    if (!cellsToClear.length) return 0;
-
-    for (const c of cellsToClear) {
-      clearCell(c.q, c.r);
-    }
-
-    const inverseSteps = (6 - steps) % 6;
-    applyGravityCanonical(steps, inverseSteps);
-    hiveShakeTime = Math.max(hiveShakeTime, HIVE_SHAKE_DURATION);
-
-    if (DEBUG) {
-      const tileCountAfter = Array.from(grid.values()).length;
-      const invalidCells = [];
-      for (const key of grid.keys()) {
-        const [qStr, rStr] = key.split(",");
-        const q = parseInt(qStr, 10);
-        const r = parseInt(rStr, 10);
-        const ring = ringIndexOf(q, r);
-        if (ring <= INNER_RADIUS || !isInsideBoard(q, r)) {
-          invalidCells.push({ q, r, ring });
-        }
-      }
-      debugLog("Lines cleared", {
-        cleared: clearedRowKeys.length,
-        gravityDirIndex,
-        steps,
-        clearedRows: [...clearedRowKeys].sort((a, b) => a - b),
-        rowDebug,
-        tileCountAfter,
-        holeIssues: invalidCells.length
-      });
-      if (invalidCells.length) {
-        console.error("[HexHive][CLEAR_BUG] Invalid cells after collapse", invalidCells);
-      }
-    }
-    return clearedRowKeys.length;
+    return { clearedLineCount: linesMeta.length, cellsToClear, linesMeta };
   }
 
-  function applyRowShiftAfterClear(steps, clearedRowKeys) {
-    if (!clearedRowKeys || !clearedRowKeys.length) return;
+  // Clear all detected lines, then collapse along current gravity until stable
+  function resolveClearsAndCollapse() {
+    let totalCleared = 0;
+    while (true) {
+      const { clearedLineCount, cellsToClear, linesMeta } = findFullLinesAxial();
+      if (!clearedLineCount) break;
 
-    const uniqueCleared = Array.from(new Set(clearedRowKeys)).sort((a, b) => a - b);
-    const clearedSet = new Set(uniqueCleared);
-    const newGrid = new Map();
-    const newGridMeta = new Map();
+      const clearedCellsArr = Array.from(cellsToClear).map((key) => {
+        const [qStr, rStr] = key.split(",");
+        return { q: parseInt(qStr, 10), r: parseInt(rStr, 10) };
+      });
 
-    function clearedBelowCount(tileKey) {
-      let count = 0;
-      for (const cr of uniqueCleared) {
-        if (cr > tileKey) count++;
-      }
-      return count;
-    }
-
-    const inverseSteps = (6 - steps) % 6;
-
-    for (const [key, val] of grid.entries()) {
-      const [qStr, rStr] = key.split(",");
-      const q = parseInt(qStr, 10);
-      const r = parseInt(rStr, 10);
-      const prim = global.rotateAxial(q, r, steps);
-
-      const tileKey = canonicalRowKey(prim);
-
-      if (clearedSet.has(tileKey)) {
-        continue; // tile removed with cleared row
-      }
-
-      const drop = clearedBelowCount(tileKey);
-      const targetPrim = { q: prim.q, r: prim.r + drop };
-      const rotatedBack = global.rotateAxial(targetPrim.q, targetPrim.r, inverseSteps);
-
-      if (!isInsideBoard(rotatedBack.q, rotatedBack.r) || ringIndexOf(rotatedBack.q, rotatedBack.r) <= INNER_RADIUS) {
-        continue;
-      }
-
-      const newKey = axialKey(rotatedBack.q, rotatedBack.r);
-      const existingMeta = newGridMeta.get(newKey);
-      if (existingMeta) {
-        if (existingMeta.tileKey >= tileKey) {
-          continue; // keep the tile that was originally lower (larger r')
+      for (const cell of clearedCellsArr) {
+        const colorIndex = getCell(cell.q, cell.r);
+        if (colorIndex !== null && colorIndex !== undefined) {
+          cellEffects.push({
+            q: cell.q,
+            r: cell.r,
+            colorIndex,
+            type: "clear",
+            timer: CLEAR_EFFECT_DURATION,
+            duration: CLEAR_EFFECT_DURATION
+          });
+          cellEffects.push({
+            q: cell.q,
+            r: cell.r,
+            colorIndex,
+            type: "clearRing",
+            timer: CLEAR_EFFECT_DURATION + 0.08,
+            duration: CLEAR_EFFECT_DURATION + 0.08
+          });
         }
+        clearCell(cell.q, cell.r);
       }
 
-      newGrid.set(newKey, val);
-      newGridMeta.set(newKey, { tileKey });
+      applyGravity();
+      hiveShakeTime = Math.max(hiveShakeTime, HIVE_SHAKE_DURATION);
+      totalCleared += clearedLineCount;
+
+      if (DEBUG) {
+        debugLog("[HexHive][LINES_CLEAR]", linesMeta);
+      }
     }
 
-    grid = newGrid;
+    return totalCleared;
   }
 
   function applyGravityCanonical(steps, inverseSteps) {
@@ -850,6 +797,7 @@
           targetCell.rPrim,
           inverseSteps
         );
+        if (!isInsideBoard(rotatedBack.q, rotatedBack.r)) continue;
         newGrid.set(axialKey(rotatedBack.q, rotatedBack.r), sourceVal);
         cursor--;
       }
@@ -1215,6 +1163,23 @@
       const colorIndex = fx.colorIndex % HONEY_COLORS.length;
       const fill = HONEY_COLORS[colorIndex] || HONEY_COLORS[0];
       const t = Math.max(0, Math.min(1, fx.timer / fx.duration));
+
+      if (fx.type === "clearRing") {
+        ctx.save();
+        const pulse = 1 - t;
+        const radius = hexSize * (1.05 + pulse * 0.45);
+        ctx.globalAlpha = 0.55 * t;
+        ctx.lineWidth = Math.max(2, hexSize * 0.2 * pulse);
+        ctx.strokeStyle = `rgba(255, 230, 140, ${0.7 * t})`;
+        ctx.shadowColor = "rgba(255, 200, 120, 0.3)";
+        ctx.shadowBlur = hexSize * 0.55 * pulse;
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+        continue;
+      }
+
       const scaleFx = fx.type === "clear" ? 1 + 0.28 * (1 - t) : 1 + 0.18 * (1 - t);
       ctx.save();
       ctx.globalAlpha = fx.type === "clear" ? t : 0.65 + 0.35 * t;

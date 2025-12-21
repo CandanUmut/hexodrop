@@ -56,32 +56,49 @@
   let btnSoftDrop;
 
   function setupGestureGuards() {
-    document.addEventListener(
-      "gesturestart",
-      (e) => e.preventDefault(),
-      { passive: false }
-    );
-    document.addEventListener(
-      "gesturechange",
-      (e) => e.preventDefault(),
-      { passive: false }
-    );
-    document.addEventListener(
-      "gestureend",
-      (e) => e.preventDefault(),
-      { passive: false }
-    );
+    const gestureTargets = [];
+    if (canvas) gestureTargets.push(canvas);
+    const gameContainer = document.querySelector(".game-container");
+    if (gameContainer) gestureTargets.push(gameContainer);
+    document
+      .querySelectorAll(".mobile-controls, .controls, .button-row")
+      .forEach((el) => gestureTargets.push(el));
+
+    const preventGestures = (e) => e.preventDefault();
+    const preventWhenPlaying = (e) => {
+      if (e.touches && e.touches.length > 1) {
+        e.preventDefault();
+        return;
+      }
+      const state = HexHiveGame.getState();
+      if (state === HexHiveGame.GAME_STATES.PLAYING) {
+        e.preventDefault();
+      }
+    };
+
+    gestureTargets.forEach((el) => {
+      el.addEventListener("gesturestart", preventGestures, { passive: false });
+      el.addEventListener("gesturechange", preventGestures, { passive: false });
+      el.addEventListener("gestureend", preventGestures, { passive: false });
+      el.addEventListener("touchstart", preventWhenPlaying, { passive: false });
+      el.addEventListener("touchmove", preventWhenPlaying, { passive: false });
+    });
 
     let lastTouchEnd = 0;
-    document.addEventListener(
-      "touchend",
-      (e) => {
-        const now = Date.now();
-        if (now - lastTouchEnd <= 250) e.preventDefault();
-        lastTouchEnd = now;
-      },
-      { passive: false }
+    const tapTargets = document.querySelectorAll(
+      ".control-btn, .button-row button, #btn-help, #leaderboard-close, #nickname-save, #gameover-restart, #gameover-menu"
     );
+    tapTargets.forEach((el) => {
+      el.addEventListener(
+        "touchend",
+        (e) => {
+          const now = Date.now();
+          if (now - lastTouchEnd <= 250) e.preventDefault();
+          lastTouchEnd = now;
+        },
+        { passive: false }
+      );
+    });
   }
 
   function initDom() {
@@ -541,8 +558,8 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    setupGestureGuards();
     initDom();
+    setupGestureGuards();
     resizeCanvas();
     HexHiveGame.initGame(canvas, nextCanvas);
     resetStatTracking();
