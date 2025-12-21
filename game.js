@@ -2,7 +2,7 @@
 // Hex Hive Drop – donut board + rotating hive, gravity & controls aligned with screen.
 
 (function (global) {
-  const DEBUG = false;
+  const DEBUG = true;
 
   function debugLog(...args) {
     if (DEBUG) {
@@ -14,7 +14,7 @@
   const HEX_SIZE = global.HEX_SIZE || 24;
 
   // Board radii
-  const HIVE_RADIUS = 6; // total radius (outermost ring)
+  const HIVE_RADIUS = 8; // total radius (outermost ring)
   const INNER_RADIUS = 2; // radius of empty hole (0..INNER_RADIUS = spawn zone only)
 
   const GAME_STATES = {
@@ -482,6 +482,7 @@
     const angle = hiveRotationAngle;
     const cosA = Math.cos(angle);
     const sinA = Math.sin(angle);
+    const rotatedYValues = [];
 
     for (let i = 0; i < HEX_DIRECTIONS.length; i++) {
       const d = HEX_DIRECTIONS[i];
@@ -489,11 +490,10 @@
       const x = p.x;
       const y = p.y;
 
-      // Apply same rotation that we use on the canvas:
-      // x' = x*cos + y*sin
-      // y' = -x*sin + y*cos
-      const xr = x * cosA + y * sinA;
-      const yr = -x * sinA + y * cosA;
+      // Apply the same rotation used when rendering the hive (standard 2D rotation)
+      const xr = x * cosA - y * sinA;
+      const yr = x * sinA + y * cosA;
+      rotatedYValues.push({ i, yr });
 
       // Screen-down: max y'
       if (yr > bestDownVal) {
@@ -512,16 +512,27 @@
       }
     }
 
+    const prevGravity = gravityDirIndex;
+    const prevLeft = controlDirLeftIndex;
+    const prevRight = controlDirRightIndex;
+
     gravityDirIndex = bestDownIdx;
     controlDirRightIndex = bestRightIdx;
     controlDirLeftIndex = bestLeftIdx;
 
-    debugLog("Dir map", {
-      angle,
-      gravityDirIndex,
-      controlDirLeftIndex,
-      controlDirRightIndex
-    });
+    if (
+      DEBUG &&
+      (prevGravity !== gravityDirIndex || prevLeft !== controlDirLeftIndex || prevRight !== controlDirRightIndex)
+    ) {
+      debugLog("Dir map updated", {
+        angle,
+        gravityDirIndex,
+        controlDirLeftIndex,
+        controlDirRightIndex,
+        gravityVector: HEX_DIRECTIONS[gravityDirIndex]
+      });
+      debugLog("Rotated Y values", rotatedYValues);
+    }
   }
 
   function getGravityDir() {
@@ -620,10 +631,14 @@
       }
     }
 
-    for (const row of rowMap.values()) {
+    const tileCountBefore = Array.from(grid.values()).length;
+    const clearedRows = [];
+
+    for (const [rowKey, row] of rowMap.entries()) {
       if (!row.cells.length) continue;
       if (row.occupied === row.cells.length) {
         cleared++;
+        clearedRows.push(rowKey);
         for (const entry of row.cells) {
           const cell = entry.orig;
           const colorIndex = getCell(cell.q, cell.r);
@@ -650,7 +665,29 @@
 
     applyGravityCanonical(steps, inverseSteps);
     hiveShakeTime = Math.max(hiveShakeTime, HIVE_SHAKE_DURATION);
-    debugLog("Lines cleared", { cleared, gravityDirIndex, steps });
+
+    const tileCountAfter = Array.from(grid.values()).length;
+    if (DEBUG) {
+      const invalidCells = [];
+      for (const key of grid.keys()) {
+        const [qStr, rStr] = key.split(",");
+        const q = parseInt(qStr, 10);
+        const r = parseInt(rStr, 10);
+        if (ringIndexOf(q, r) <= INNER_RADIUS) {
+          invalidCells.push({ q, r });
+        }
+      }
+      debugLog("Lines cleared", {
+        cleared,
+        gravityDirIndex,
+        steps,
+        totalRows: rowMap.size,
+        clearedRows,
+        tileCountBefore,
+        tileCountAfter,
+        holeIssues: invalidCells.length
+      });
+    }
     return cleared;
   }
 
