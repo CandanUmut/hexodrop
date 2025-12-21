@@ -17,6 +17,9 @@
         <span class="bee-icon">🐝</span>
         <span>Stack the honeycomb, clear the hive, don’t overflow.</span>
       </div>
+      <div class="header-actions">
+        <button id="btn-help" class="ghost-btn" aria-label="Show help">?</button>
+      </div>
     </header>
 
     <main class="app-main">
@@ -141,6 +144,39 @@
         <button id="gameover-restart">Play Again</button>
         <button id="gameover-menu">Back to Menu</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Help overlay -->
+  <div id="help-overlay" class="help-overlay hidden">
+    <div class="help-backdrop"></div>
+    <div class="help-content">
+      <div class="help-header">
+        <h2>Controls</h2>
+        <button id="help-close" class="ghost-btn" aria-label="Close help">✕</button>
+      </div>
+      <div class="help-columns">
+        <div>
+          <h3>Keyboard</h3>
+          <ul>
+            <li>← / → : move piece left / right</li>
+            <li>↓ : soft drop, Space: hard drop</li>
+            <li>Z / X / ↑ : rotate piece</li>
+            <li>Q / E : rotate hive</li>
+            <li>P : pause</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Mobile</h3>
+          <ul>
+            <li>Arrow buttons: move piece</li>
+            <li>⟲ / ⟳ : rotate piece</li>
+            <li>Hive ⟲ / ⟳ : rotate hive</li>
+            <li>Soft ▼ / Drop: soft & hard drop</li>
+          </ul>
+        </div>
+      </div>
+      <p class="help-note">Rotate the hive to choose which wall is “down”. Blocks only move from gravity and line clears.</p>
     </div>
   </div>
 
