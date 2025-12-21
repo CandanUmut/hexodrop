@@ -609,40 +609,36 @@
 
   // Clear “rows” perpendicular to gravity direction, only on donut cells
   function clearFullLines() {
-    let cleared = 0;
-    const cellsToClear = [];
-
     if (!HEX_DIRECTIONS[gravityDirIndex]) return 0;
 
     const steps = stepsToCanonicalDown();
-    const inverseSteps = (6 - steps) % 6;
-    const rowMap = new Map(); // r' -> { cells, occupied }
+    const rows = new Map(); // r' -> { cellsOrig: [], cellsPrim: [], occupied }
 
     for (const cell of boardCells) {
-      const rotated = global.rotateAxial(cell.q, cell.r, steps);
-      const rowKey = rotated.r;
-
-      let row = rowMap.get(rowKey);
+      const prim = global.rotateAxial(cell.q, cell.r, steps);
+      const rowKey = prim.r;
+      let row = rows.get(rowKey);
       if (!row) {
-        row = { cells: [], occupied: 0 };
-        rowMap.set(rowKey, row);
+        row = { cellsOrig: [], cellsPrim: [], occupied: 0 };
+        rows.set(rowKey, row);
       }
-      row.cells.push({ orig: cell, rotated });
+      row.cellsOrig.push(cell);
+      row.cellsPrim.push(prim);
       if (isOccupied(cell.q, cell.r)) {
         row.occupied++;
       }
     }
 
-    const tileCountBefore = Array.from(grid.values()).length;
-    const clearedRows = [];
+    const cellsToClear = [];
+    const clearedRowKeys = [];
+    const rowDebug = [];
 
-    for (const [rowKey, row] of rowMap.entries()) {
-      if (!row.cells.length) continue;
-      if (row.occupied === row.cells.length) {
-        cleared++;
-        clearedRows.push(rowKey);
-        for (const entry of row.cells) {
-          const cell = entry.orig;
+    for (const [rowKey, row] of rows.entries()) {
+      const rowSize = row.cellsOrig.length;
+      const isFull = rowSize > 0 && row.occupied === rowSize;
+      if (isFull) {
+        clearedRowKeys.push(rowKey);
+        for (const cell of row.cellsOrig) {
           const colorIndex = getCell(cell.q, cell.r);
           if (colorIndex !== null && colorIndex !== undefined) {
             cellEffects.push({
@@ -657,6 +653,12 @@
           cellsToClear.push(cell);
         }
       }
+      rowDebug.push({
+        rowKey,
+        rowSize,
+        occupied: row.occupied,
+        sample: row.cellsOrig.slice(0, 3).map((c) => ({ q: c.q, r: c.r }))
+      });
     }
 
     if (!cellsToClear.length) return 0;
@@ -665,32 +667,86 @@
       clearCell(c.q, c.r);
     }
 
-    applyGravityCanonical(steps, inverseSteps);
+    applyRowShiftAfterClear(steps, clearedRowKeys);
     hiveShakeTime = Math.max(hiveShakeTime, HIVE_SHAKE_DURATION);
 
-    const tileCountAfter = Array.from(grid.values()).length;
     if (DEBUG) {
+      const tileCountAfter = Array.from(grid.values()).length;
       const invalidCells = [];
       for (const key of grid.keys()) {
         const [qStr, rStr] = key.split(",");
         const q = parseInt(qStr, 10);
         const r = parseInt(rStr, 10);
-        if (ringIndexOf(q, r) <= INNER_RADIUS) {
-          invalidCells.push({ q, r });
+        const ring = ringIndexOf(q, r);
+        if (ring <= INNER_RADIUS || !isInsideBoard(q, r)) {
+          invalidCells.push({ q, r, ring });
         }
       }
       debugLog("Lines cleared", {
-        cleared,
+        cleared: clearedRowKeys.length,
         gravityDirIndex,
         steps,
-        totalRows: rowMap.size,
-        clearedRows,
-        tileCountBefore,
+        clearedRows: [...clearedRowKeys].sort((a, b) => a - b),
+        rowDebug,
         tileCountAfter,
         holeIssues: invalidCells.length
       });
+      if (invalidCells.length) {
+        console.error("[HexHive][CLEAR_BUG] Invalid cells after collapse", invalidCells);
+      }
     }
-    return cleared;
+    return clearedRowKeys.length;
+  }
+
+  function applyRowShiftAfterClear(steps, clearedRowsPrim) {
+    if (!clearedRowsPrim || !clearedRowsPrim.length) return;
+
+    const uniqueCleared = Array.from(new Set(clearedRowsPrim)).sort((a, b) => a - b);
+    const clearedSet = new Set(uniqueCleared);
+    const newGrid = new Map();
+    const newGridMeta = new Map();
+
+    function clearedBelowCount(rPrim) {
+      let count = 0;
+      for (const cr of uniqueCleared) {
+        if (cr > rPrim) count++;
+      }
+      return count;
+    }
+
+    const inverseSteps = (6 - steps) % 6;
+
+    for (const [key, val] of grid.entries()) {
+      const [qStr, rStr] = key.split(",");
+      const q = parseInt(qStr, 10);
+      const r = parseInt(rStr, 10);
+      const prim = global.rotateAxial(q, r, steps);
+
+      if (clearedSet.has(prim.r)) {
+        continue; // tile removed with cleared row
+      }
+
+      const drop = clearedBelowCount(prim.r);
+      const targetPrim = { q: prim.q, r: prim.r + drop };
+      const rotatedBack = global.rotateAxial(targetPrim.q, targetPrim.r, inverseSteps);
+
+      if (!isInsideBoard(rotatedBack.q, rotatedBack.r) || ringIndexOf(rotatedBack.q, rotatedBack.r) <= INNER_RADIUS) {
+        continue;
+      }
+
+      const newKey = axialKey(rotatedBack.q, rotatedBack.r);
+      const existingMeta = newGridMeta.get(newKey);
+      if (existingMeta) {
+        if (existingMeta.rPrim >= prim.r) {
+          continue; // keep the tile that was originally lower (larger r')
+        }
+      }
+
+      newGrid.set(newKey, val);
+      newGridMeta.set(newKey, { rPrim: prim.r });
+    }
+
+    grid = newGrid;
   }
 
   function applyGravityCanonical(steps, inverseSteps) {
