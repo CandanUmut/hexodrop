@@ -25,6 +25,7 @@ body {
   margin: 0;
   padding: 0;
   height: 100%;
+  overscroll-behavior: none;
 }
 
 body {
@@ -35,6 +36,19 @@ body {
     radial-gradient(circle at bottom, #100b20 0, #050308 65%);
   color: var(--text-main);
   font-size: 16px;
+  touch-action: none;
+  -ms-touch-action: none;
+}
+
+canvas,
+button,
+.game-ui,
+.controls,
+.hud {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .hidden {
