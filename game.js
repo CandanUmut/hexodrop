@@ -1046,6 +1046,72 @@
 
   // ---------- Rendering ----------
 
+  function renderExitIndicator(ctx) {
+    const label = "EXIT";
+    const x = 20;
+    const yCenter = gameHeight * 0.68;
+    const height = 28;
+    const paddingX = 12;
+    const pulse = 0.08 + 0.05 * Math.sin(Date.now() / 900);
+
+    ctx.save();
+    ctx.font = "14px 'Inter', 'Segoe UI', system-ui, sans-serif";
+    const textWidth = ctx.measureText(label).width;
+    const width = Math.max(94, textWidth + paddingX * 2 + 16);
+    const y = yCenter - height / 2;
+    const radius = height / 2;
+
+    ctx.shadowColor = "rgba(255, 200, 120, 0.28)";
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    ctx.lineTo(x + radius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+
+    ctx.fillStyle = `rgba(10, 6, 14, ${0.62 + pulse})`;
+    ctx.fill();
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = `rgba(255, 255, 255, ${0.18 + pulse * 0.4})`;
+    ctx.stroke();
+
+    ctx.shadowColor = "rgba(0,0,0,0)";
+    ctx.shadowBlur = 0;
+
+    ctx.fillStyle = "rgba(245, 212, 160, 0.92)";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, x + paddingX, yCenter);
+
+    const arrowBaseX = x + width - 20;
+    const arrowCenterY = yCenter;
+    ctx.beginPath();
+    ctx.moveTo(arrowBaseX, arrowCenterY - 6);
+    ctx.lineTo(arrowBaseX + 12, arrowCenterY);
+    ctx.lineTo(arrowBaseX, arrowCenterY + 6);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(255, 190, 110, 0.88)";
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(arrowBaseX - 12, arrowCenterY);
+    ctx.lineTo(arrowBaseX, arrowCenterY);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
   function renderGame(ctx) {
     if (!canvas) return;
 
@@ -1211,6 +1277,7 @@
     }
 
     ctx.restore(); // hive transform
+    renderExitIndicator(ctx);
     ctx.restore(); // scene
 
     renderNextPreview();
