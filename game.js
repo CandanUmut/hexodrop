@@ -82,6 +82,9 @@
 
   let bgmStarted = false;
 
+  // WebAudio fallback
+  let audioCtx = null;
+
   // ---------- Audio helpers ----------
 
   function playAudioSafe(a) {
@@ -97,8 +100,59 @@
 
   function safePlaySound(soundKey) {
     const s = sounds[soundKey];
-    if (!s) return;
-    playAudioSafe(s);
+    if (s && !s._broken) {
+      playAudioSafe(s);
+      return;
+    }
+    playBeep(soundKey);
+  }
+
+  function playBeep(type) {
+    try {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "sine";
+
+      const now = audioCtx.currentTime;
+      let freq = 440;
+
+      switch (type) {
+        case "move":
+          freq = 420;
+          break;
+        case "rotate":
+          freq = 520;
+          break;
+        case "drop":
+          freq = 320;
+          break;
+        case "lineClear":
+          freq = 720;
+          break;
+        case "gameOver":
+          freq = 260;
+          osc.frequency.setValueAtTime(620, now);
+          osc.frequency.exponentialRampToValueAtTime(180, now + 0.3);
+          break;
+        default:
+          freq = 480;
+      }
+
+      if (type !== "gameOver") {
+        osc.frequency.setValueAtTime(freq, now);
+      }
+
+      gain.gain.setValueAtTime(0.18, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(now + 0.22);
+    } catch (e) {}
   }
 
   function safeLoopBgm() {
@@ -133,6 +187,9 @@
   function loadAudio(src) {
     try {
       const audio = new Audio(src);
+      audio.onerror = () => {
+        audio._broken = true;
+      };
       return audio;
     } catch (e) {
       return null;
@@ -564,6 +621,7 @@
     }
 
     applyGravity();
+    hiveShakeTime = Math.max(hiveShakeTime, HIVE_SHAKE_DURATION);
     return cleared;
   }
 
@@ -800,7 +858,7 @@
     }
     if (strokeStyle) {
       ctx.strokeStyle = strokeStyle;
-      ctx.lineWidth = 1;
+      ctx.lineWidth = Math.max(1.4, size * 0.06);
       ctx.stroke();
     }
   }
@@ -856,7 +914,7 @@
       const value = getCell(cell.q, cell.r);
 
       const t = HIVE_RADIUS > 0 ? cell.ringIndex / HIVE_RADIUS : 0;
-      const strokeAlpha = 0.06 + 0.20 * t;
+      const strokeAlpha = 0.12 + 0.25 * t;
       const strokeColor = `rgba(255,255,255,${strokeAlpha.toFixed(3)})`;
 
       if (value === null || value === undefined) {
@@ -884,16 +942,16 @@
       const colorIndex = fx.colorIndex % HONEY_COLORS.length;
       const fill = HONEY_COLORS[colorIndex] || HONEY_COLORS[0];
       const t = Math.max(0, Math.min(1, fx.timer / fx.duration));
-      const scaleFx = fx.type === "clear" ? 1 + 0.2 * (1 - t) : 1 + 0.12 * (1 - t);
+      const scaleFx = fx.type === "clear" ? 1 + 0.28 * (1 - t) : 1 + 0.18 * (1 - t);
       ctx.save();
-      ctx.globalAlpha = fx.type === "clear" ? t : 0.5 + 0.5 * t;
+      ctx.globalAlpha = fx.type === "clear" ? t : 0.65 + 0.35 * t;
       drawHex(
         ctx,
         pos.x,
         pos.y,
-        hexSize * 1.02 * scaleFx,
+        hexSize * 1.05 * scaleFx,
         fill,
-        "rgba(255,255,255,0.5)"
+        fx.type === "clear" ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.55)"
       );
       ctx.restore();
     }
@@ -1003,6 +1061,7 @@
     hiveRotationProgress = 0;
     hiveShakeTime = HIVE_SHAKE_DURATION;
     safePlaySound("rotate");
+    recomputeDirectionMapping();
   }
 
   function rotateHiveLeft() {

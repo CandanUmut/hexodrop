@@ -26,9 +26,11 @@
         supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       } else {
         supabaseClient = null;
+        console.warn("Supabase not configured; leaderboard disabled.");
       }
     } catch (e) {
       supabaseClient = null;
+      console.warn("Supabase init failed:", e);
     }
 
     try {
@@ -146,12 +148,20 @@
         .order("score", { ascending: false })
         .limit(limit);
 
-      if (error) {
-        console.warn("Supabase fetch leaderboard error:", error);
+      if (!error && data) {
+        return data;
+      }
+      const fallback = await supabaseClient
+        .from("scores")
+        .select("nickname, score, level_reached, lines_cleared")
+        .order("score", { ascending: false })
+        .limit(limit);
+      if (fallback.error) {
+        console.warn("Supabase fetch leaderboard error:", fallback.error);
         return [];
       }
 
-      return data || [];
+      return fallback.data || [];
     } catch (e) {
       console.warn("Supabase fetch leaderboard exception:", e);
       return [];

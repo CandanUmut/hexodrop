@@ -33,6 +33,11 @@
   let lastStatValues = { score: null, level: null, lines: null };
   const statFlashTimers = new Map();
 
+  let helpOverlay;
+  let helpToggleBtn;
+  let helpCloseBtn;
+  let helpVisible = false;
+
   let btnPlay;
   let btnPause;
   let btnRestart;
@@ -70,6 +75,10 @@
     gameoverRestartBtn = document.getElementById("gameover-restart");
     gameoverMenuBtn = document.getElementById("gameover-menu");
 
+    helpOverlay = document.getElementById("help-overlay");
+    helpToggleBtn = document.getElementById("btn-help");
+    helpCloseBtn = document.getElementById("help-close");
+
     statScore = document.getElementById("stat-score");
     statLevel = document.getElementById("stat-level");
     statLines = document.getElementById("stat-lines");
@@ -98,6 +107,7 @@
     setupNicknameModal();
     setupLeaderboardModal();
     setupGameoverModal();
+    setupHelpOverlay();
   }
 
   function resizeCanvas() {
@@ -139,6 +149,14 @@
 
   function setupKeyboard() {
     window.addEventListener("keydown", (e) => {
+      if (helpVisible) {
+        if (e.key === "Escape" || e.key === "?" || e.key === "/") {
+          e.preventDefault();
+          hideHelp();
+        }
+        return;
+      }
+
       const state = HexHiveGame.getState();
       if (state === HexHiveGame.GAME_STATES.MENU) {
         // Sadece Space / Drop ile oyuna başlayalım
@@ -195,6 +213,10 @@
           HexHiveGame.togglePause();
           updateButtonStates();
           break;
+        case "?":
+          e.preventDefault();
+          showHelp();
+          break;
       }
     });
   }
@@ -217,6 +239,34 @@
     attach(rightZone, () => HexHiveGame.handleMoveRight());
     attach(topZone, () => HexHiveGame.handleRotateCW());
     attach(bottomZone, () => HexHiveGame.handleSoftDrop());
+  }
+
+  function setupHelpOverlay() {
+    if (helpToggleBtn) {
+      helpToggleBtn.addEventListener("click", () => showHelp());
+    }
+    if (helpCloseBtn) {
+      helpCloseBtn.addEventListener("click", () => hideHelp());
+    }
+    if (helpOverlay) {
+      helpOverlay.addEventListener("click", (e) => {
+        if (e.target === helpOverlay) {
+          hideHelp();
+        }
+      });
+    }
+  }
+
+  function showHelp() {
+    if (!helpOverlay) return;
+    helpOverlay.classList.remove("hidden");
+    helpVisible = true;
+  }
+
+  function hideHelp() {
+    if (!helpOverlay) return;
+    helpOverlay.classList.add("hidden");
+    helpVisible = false;
   }
 
   function setupMobileControls() {
