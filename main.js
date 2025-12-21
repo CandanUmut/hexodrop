@@ -31,16 +31,24 @@
   let statLevel;
   let statLines;
   let lastStatValues = { score: null, level: null, lines: null };
-
   const statFlashTimers = new Map();
 
   let btnPlay;
   let btnPause;
   let btnRestart;
   let btnLeaderboard;
+
+  // Hive + drop buttons
   let btnRotateHiveLeft;
   let btnDrop;
   let btnRotateHiveRight;
+
+  // Yeni: piece kontrol butonları
+  let btnPieceLeft;
+  let btnPieceRight;
+  let btnPieceRotateCW;
+  let btnPieceRotateCCW;
+  let btnSoftDrop;
 
   function initDom() {
     canvas = document.getElementById("game-canvas");
@@ -70,14 +78,23 @@
     btnPause = document.getElementById("btn-pause");
     btnRestart = document.getElementById("btn-restart");
     btnLeaderboard = document.getElementById("btn-leaderboard");
+
     btnRotateHiveLeft = document.getElementById("btn-rotate-hive-left");
     btnDrop = document.getElementById("btn-drop");
     btnRotateHiveRight = document.getElementById("btn-rotate-hive-right");
+
+    // Yeni: piece butonları
+    btnPieceLeft = document.getElementById("btn-piece-left");
+    btnPieceRight = document.getElementById("btn-piece-right");
+    btnPieceRotateCW = document.getElementById("btn-piece-rotate-cw");
+    btnPieceRotateCCW = document.getElementById("btn-piece-rotate-ccw");
+    btnSoftDrop = document.getElementById("btn-soft-drop");
 
     setupButtons();
     setupKeyboard();
     setupTouchZones();
     setupMobileControls();
+    setupPieceButtons();
     setupNicknameModal();
     setupLeaderboardModal();
     setupGameoverModal();
@@ -123,7 +140,15 @@
   function setupKeyboard() {
     window.addEventListener("keydown", (e) => {
       const state = HexHiveGame.getState();
-      if (state === HexHiveGame.GAME_STATES.MENU) return;
+      if (state === HexHiveGame.GAME_STATES.MENU) {
+        // Sadece Space / Drop ile oyuna başlayalım
+        if (e.key === " " || e.key === "Spacebar") {
+          e.preventDefault();
+          HexHiveGame.startGame();
+          updateButtonStates();
+        }
+        return;
+      }
 
       switch (e.key) {
         case "ArrowLeft":
@@ -153,6 +178,17 @@
           e.preventDefault();
           HexHiveGame.handleHardDrop();
           break;
+        // Yeni: hive rotasyonu
+        case "q":
+        case "Q":
+          e.preventDefault();
+          HexHiveGame.handleRotateHiveLeft();
+          break;
+        case "e":
+        case "E":
+          e.preventDefault();
+          HexHiveGame.handleRotateHiveRight();
+          break;
         case "p":
         case "P":
           e.preventDefault();
@@ -170,6 +206,7 @@
     const bottomZone = document.getElementById("touch-bottom");
 
     function attach(zone, handler) {
+      if (!zone) return;
       zone.addEventListener("pointerdown", (e) => {
         e.preventDefault();
         handler();
@@ -200,12 +237,42 @@
         } else if (state === HexHiveGame.GAME_STATES.PLAYING) {
           HexHiveGame.handleHardDrop();
         }
+        updateButtonStates();
       });
     }
 
     if (btnRotateHiveRight) {
       btnRotateHiveRight.addEventListener("click", () => {
         HexHiveGame.handleRotateHiveRight();
+      });
+    }
+  }
+
+  // Yeni: parça kontrol butonları
+  function setupPieceButtons() {
+    if (btnPieceLeft) {
+      btnPieceLeft.addEventListener("click", () => {
+        HexHiveGame.handleMoveLeft();
+      });
+    }
+    if (btnPieceRight) {
+      btnPieceRight.addEventListener("click", () => {
+        HexHiveGame.handleMoveRight();
+      });
+    }
+    if (btnPieceRotateCW) {
+      btnPieceRotateCW.addEventListener("click", () => {
+        HexHiveGame.handleRotateCW();
+      });
+    }
+    if (btnPieceRotateCCW) {
+      btnPieceRotateCCW.addEventListener("click", () => {
+        HexHiveGame.handleRotateCCW();
+      });
+    }
+    if (btnSoftDrop) {
+      btnSoftDrop.addEventListener("click", () => {
+        HexHiveGame.handleSoftDrop();
       });
     }
   }
