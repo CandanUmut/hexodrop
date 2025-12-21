@@ -454,9 +454,11 @@
   function hardDropCurrentPiece() {
     if (!currentPiece) return;
     let moved = false;
-    const gdir = getGravityDir();
-    while (movePiece(gdir.q, gdir.r)) {
-      moved = true;
+    const gdir = HEX_DIRECTIONS[gravityDirIndex];
+    if (gdir) {
+      while (movePiece(gdir.q, gdir.r)) {
+        moved = true;
+      }
     }
     if (moved) {
       safePlaySound("drop");
@@ -846,10 +848,12 @@
     fallTimer += deltaTime;
     if (fallTimer >= fallInterval) {
       fallTimer = 0;
-      const gdir = getGravityDir();
-      const moved = movePiece(gdir.q, gdir.r);
-      if (!moved) {
-        lockPiece();
+      const gdir = HEX_DIRECTIONS[gravityDirIndex];
+      if (gdir) {
+        const moved = movePiece(gdir.q, gdir.r);
+        if (!moved) {
+          lockPiece();
+        }
       }
     }
   }
@@ -1221,7 +1225,8 @@
 
   function handleSoftDrop() {
     if (gameState !== GAME_STATES.PLAYING) return;
-    const gdir = getGravityDir();
+    const gdir = HEX_DIRECTIONS[gravityDirIndex];
+    if (!gdir) return;
     const moved = movePiece(gdir.q, gdir.r);
     if (!moved) {
       lockPiece();
