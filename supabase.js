@@ -21,9 +21,12 @@
 
   function initClient() {
     try {
-      // TEK KONTROL BU KALSIN: supabase globali var mı ve keyler dolu mu
-      if (typeof supabase !== "undefined" && SUPABASE_URL && SUPABASE_ANON_KEY) {
-        supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      const hasCreds = Boolean(SUPABASE_URL) && Boolean(SUPABASE_ANON_KEY);
+      if (typeof global.supabase !== "undefined" && hasCreds) {
+        supabaseClient = global.supabase.createClient(
+          SUPABASE_URL,
+          SUPABASE_ANON_KEY
+        );
       } else {
         supabaseClient = null;
         console.warn("Supabase not configured; leaderboard disabled.");
@@ -139,9 +142,6 @@
     }
 
     try {
-      // Eğer scores_view oluşturmadıysan, aşağıdaki satırı
-      // .from("scores") ve .select("nickname, score, level_reached, lines_cleared")
-      // şeklinde güncelle.
       const { data, error } = await supabaseClient
         .from("scores_view")
         .select("nickname, score, level_reached, lines_cleared")
@@ -151,6 +151,22 @@
       if (!error && data) {
         return data;
       }
+
+      const fallbackJoin = await supabaseClient
+        .from("scores")
+        .select("score, level_reached, lines_cleared, players(nickname)")
+        .order("score", { ascending: false })
+        .limit(limit);
+
+      if (!fallbackJoin.error && fallbackJoin.data) {
+        return fallbackJoin.data.map((row) => ({
+          nickname: row.players?.nickname || "Player",
+          score: row.score,
+          level_reached: row.level_reached,
+          lines_cleared: row.lines_cleared
+        }));
+      }
+
       const fallback = await supabaseClient
         .from("scores")
         .select("nickname, score, level_reached, lines_cleared")
