@@ -372,6 +372,55 @@
         { q: 0, r: 1 },
         { q: 1, r: -1 }
       ]
+    },
+    {
+      name: "duo2",
+      colorIndex: 0,
+      cells: [
+        { q: 0, r: 0 },
+        { q: 1, r: 0 }
+      ]
+    },
+    {
+      name: "corner3",
+      colorIndex: 1,
+      cells: [
+        { q: 0, r: 0 },
+        { q: 1, r: 0 },
+        { q: 0, r: 1 }
+      ]
+    },
+    {
+      name: "hook4",
+      colorIndex: 2,
+      cells: [
+        { q: 0, r: 0 },
+        { q: 1, r: 0 },
+        { q: 2, r: 0 },
+        { q: 0, r: 1 }
+      ]
+    },
+    {
+      name: "line5",
+      colorIndex: 1,
+      cells: [
+        { q: 0, r: 0 },
+        { q: 1, r: 0 },
+        { q: -1, r: 0 },
+        { q: 2, r: 0 },
+        { q: -2, r: 0 }
+      ]
+    },
+    {
+      name: "fork5",
+      colorIndex: 0,
+      cells: [
+        { q: 0, r: 0 },
+        { q: 1, r: 0 },
+        { q: -1, r: 0 },
+        { q: 0, r: 1 },
+        { q: 0, r: -1 }
+      ]
     }
   ];
 
@@ -607,6 +656,11 @@
     return ((CANONICAL_DOWN_INDEX - gravityDirIndex) % 6 + 6) % 6;
   }
 
+  function canonicalRowKey(prim) {
+    // Flat-top axialToPixel y ∝ (r + q/2). Multiply by 2 to keep integer.
+    return prim.r * 2 + prim.q;
+  }
+
   // Clear “rows” perpendicular to gravity direction, only on donut cells
   function clearFullLines() {
     if (!HEX_DIRECTIONS[gravityDirIndex]) return 0;
@@ -616,7 +670,7 @@
 
     for (const cell of boardCells) {
       const prim = global.rotateAxial(cell.q, cell.r, steps);
-      const rowKey = prim.r;
+      const rowKey = canonicalRowKey(prim);
       let row = rows.get(rowKey);
       if (!row) {
         row = { cellsOrig: [], cellsPrim: [], occupied: 0 };
@@ -635,6 +689,10 @@
 
     for (const [rowKey, row] of rows.entries()) {
       const rowSize = row.cellsOrig.length;
+      if (DEBUG && row.occupied === rowSize - 1) {
+        const missingCells = row.cellsOrig.filter((c) => !isOccupied(c.q, c.r));
+        debugLog("[HexHive][ROW_ALMOST]", { rowKey, rowSize, occupied: row.occupied, missingCells });
+      }
       const isFull = rowSize > 0 && row.occupied === rowSize;
       if (isFull) {
         clearedRowKeys.push(rowKey);
@@ -698,18 +756,18 @@
     return clearedRowKeys.length;
   }
 
-  function applyRowShiftAfterClear(steps, clearedRowsPrim) {
-    if (!clearedRowsPrim || !clearedRowsPrim.length) return;
+  function applyRowShiftAfterClear(steps, clearedRowKeys) {
+    if (!clearedRowKeys || !clearedRowKeys.length) return;
 
-    const uniqueCleared = Array.from(new Set(clearedRowsPrim)).sort((a, b) => a - b);
+    const uniqueCleared = Array.from(new Set(clearedRowKeys)).sort((a, b) => a - b);
     const clearedSet = new Set(uniqueCleared);
     const newGrid = new Map();
     const newGridMeta = new Map();
 
-    function clearedBelowCount(rPrim) {
+    function clearedBelowCount(tileKey) {
       let count = 0;
       for (const cr of uniqueCleared) {
-        if (cr > rPrim) count++;
+        if (cr > tileKey) count++;
       }
       return count;
     }
@@ -722,11 +780,13 @@
       const r = parseInt(rStr, 10);
       const prim = global.rotateAxial(q, r, steps);
 
-      if (clearedSet.has(prim.r)) {
+      const tileKey = canonicalRowKey(prim);
+
+      if (clearedSet.has(tileKey)) {
         continue; // tile removed with cleared row
       }
 
-      const drop = clearedBelowCount(prim.r);
+      const drop = clearedBelowCount(tileKey);
       const targetPrim = { q: prim.q, r: prim.r + drop };
       const rotatedBack = global.rotateAxial(targetPrim.q, targetPrim.r, inverseSteps);
 
@@ -737,13 +797,13 @@
       const newKey = axialKey(rotatedBack.q, rotatedBack.r);
       const existingMeta = newGridMeta.get(newKey);
       if (existingMeta) {
-        if (existingMeta.rPrim >= prim.r) {
+        if (existingMeta.tileKey >= tileKey) {
           continue; // keep the tile that was originally lower (larger r')
         }
       }
 
       newGrid.set(newKey, val);
-      newGridMeta.set(newKey, { rPrim: prim.r });
+      newGridMeta.set(newKey, { tileKey });
     }
 
     grid = newGrid;
