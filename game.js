@@ -1003,56 +1003,44 @@
     if (gameState !== GAME_STATES.PLAYING) return;
     if (!currentPiece || !target) return;
 
-    const maxAttempts = Math.max(1, maxSteps);
+    // Determine canonical frame where gravity points +r'
+    const steps = stepsToCanonicalDown();
+    const pivot = { q: currentPiece.pivotQ, r: currentPiece.pivotR };
+    const pivotPrim = global.rotateAxial(pivot.q, pivot.r, steps);
+    const targetPrim = global.rotateAxial(target.q, target.r, steps);
+
+    const deltaQ = targetPrim.q - pivotPrim.q;
+    if (Math.abs(deltaQ) <= deadzone) return;
+
+    // Sideways directions are perpendicular to gravity
+    const sideAIndex = (gravityDirIndex + 2) % 6;
+    const sideBIndex = (gravityDirIndex + 4) % 6;
+    const sideADir = HEX_DIRECTIONS[sideAIndex];
+    const sideBDir = HEX_DIRECTIONS[sideBIndex];
+    if (!sideADir || !sideBDir) return;
+
+    const testA = global.rotateAxial(pivot.q + sideADir.q, pivot.r + sideADir.r, steps);
+    const testB = global.rotateAxial(pivot.q + sideBDir.q, pivot.r + sideBDir.r, steps);
+
+    let dirPlusQprim = sideADir;
+    let dirMinusQprim = sideBDir;
+
+    if (testA.q > pivotPrim.q && testB.q < pivotPrim.q) {
+      dirPlusQprim = sideADir;
+      dirMinusQprim = sideBDir;
+    } else if (testB.q > pivotPrim.q && testA.q < pivotPrim.q) {
+      dirPlusQprim = sideBDir;
+      dirMinusQprim = sideADir;
+    } else if (testB.q > testA.q) {
+      dirPlusQprim = sideBDir;
+      dirMinusQprim = sideADir;
+    }
+
+    const moveDir = deltaQ > 0 ? dirPlusQprim : dirMinusQprim;
+    const maxAttempts = 1; // throttle to one sideways step per tick
 
     for (let step = 0; step < maxAttempts; step++) {
-      const pivot = { q: currentPiece.pivotQ, r: currentPiece.pivotR };
-      const baseline = axialDistance(pivot, target);
-      if (baseline <= deadzone) {
-        break;
-      }
-
-      const leftDir = HEX_DIRECTIONS[controlDirLeftIndex];
-      const rightDir = HEX_DIRECTIONS[controlDirRightIndex];
-
-      const ranked = [];
-      const preferred = [];
-
-      if (leftDir) {
-        const next = { q: pivot.q + leftDir.q, r: pivot.r + leftDir.r };
-        const dist = axialDistance(next, target);
-        if (dist < baseline) preferred.push({ dir: leftDir, dist });
-      }
-      if (rightDir) {
-        const next = { q: pivot.q + rightDir.q, r: pivot.r + rightDir.r };
-        const dist = axialDistance(next, target);
-        if (dist < baseline) preferred.push({ dir: rightDir, dist });
-      }
-
-      HEX_DIRECTIONS.forEach((dir) => {
-        const next = { q: pivot.q + dir.q, r: pivot.r + dir.r };
-        const dist = axialDistance(next, target);
-        if (dist < baseline) {
-          ranked.push({ dir, dist });
-        }
-      });
-
-      const attempts = [
-        ...preferred.sort((a, b) => a.dist - b.dist),
-        ...ranked
-          .filter((d) => !preferred.some((p) => p.dir === d.dir))
-          .sort((a, b) => a.dist - b.dist)
-      ];
-
-      let moved = false;
-      for (const attempt of attempts) {
-        if (movePiece(attempt.dir.q, attempt.dir.r)) {
-          moved = true;
-          break;
-        }
-      }
-
-      if (!moved) break;
+      if (!movePiece(moveDir.q, moveDir.r)) break;
     }
   }
 
