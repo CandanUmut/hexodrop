@@ -29,27 +29,6 @@
       <div class="game-column">
         <div class="game-container">
           <canvas id="game-canvas"></canvas>
-
-          <!-- Touch / pointer control zones -->
-          <div id="touch-left" class="touch-zone left"></div>
-          <div id="touch-right" class="touch-zone right"></div>
-          <div id="touch-top" class="touch-zone top"></div>
-          <div id="touch-bottom" class="touch-zone bottom"></div>
-        </div>
-
-        <div class="mobile-controls">
-          <button id="btn-rotate-hive-left" class="control-btn">⟲ Hive</button>
-          <button id="btn-drop" class="control-btn">Drop</button>
-          <button id="btn-rotate-hive-right" class="control-btn">⟳ Hive</button>
-        </div>
-
-        <!-- Yeni: parça kontrolleri için satır -->
-        <div class="mobile-controls">
-          <button id="btn-piece-left" class="control-btn">← Piece</button>
-          <button id="btn-piece-rotate-ccw" class="control-btn">⟲ Piece</button>
-          <button id="btn-soft-drop" class="control-btn">Soft ▼</button>
-          <button id="btn-piece-rotate-cw" class="control-btn">⟳ Piece</button>
-          <button id="btn-piece-right" class="control-btn">Piece →</button>
         </div>
       </div>
 
@@ -94,15 +73,8 @@
           <p>• Fill an entire ring around the center to clear it and score points.</p>
           <p>• Keep stacking smartly so the hive doesn’t overflow.</p>
           <h2>Controls</h2>
-            <p>
-            Keyboard: ← → move piece, Z / X / ↑ rotate piece,
-            ↓ soft drop, Space hard drop, Q / E rotate hive.
-          </p>
-          <p>Touch: tap left/right to move piece, top to rotate piece, bottom to drop.</p>
-          <p>
-            Buttons: üst satır hive rotate (⟲ / ⟳) + Drop,
-            alt satır piece hareket/döndürme + Soft drop.
-          </p>
+          <p>Keyboard: ← / → move, ↓ soft drop, ↑ hard drop, Z rotate piece, Q rotate hive, P pause.</p>
+          <p>Mouse / Touch: drag the piece, tap the piece to rotate, tap away to hard drop, swipe down to soft drop, tap ↺ to rotate the hive.</p>
         </section>
       </aside>
     </main>
@@ -159,25 +131,26 @@
         <button id="help-close" class="ghost-btn" aria-label="Close help">✕</button>
       </div>
       <div class="help-columns">
-        <div>
-          <h3>Keyboard</h3>
-          <ul>
-            <li>← / → : move piece left / right</li>
-            <li>↓ : soft drop, Space: hard drop</li>
-            <li>Z / X / ↑ : rotate piece</li>
-            <li>Q / E : rotate hive</li>
-            <li>P : pause</li>
-          </ul>
-        </div>
-        <div>
-          <h3>Mobile</h3>
-          <ul>
-            <li>Arrow buttons: move piece</li>
-            <li>⟲ / ⟳ : rotate piece</li>
-            <li>Hive ⟲ / ⟳ : rotate hive</li>
-            <li>Soft ▼ / Drop: soft & hard drop</li>
-          </ul>
-        </div>
+          <div>
+            <h3>Keyboard</h3>
+            <ul>
+              <li>← / → : move piece left / right</li>
+              <li>↓ : soft drop, ↑ : hard drop</li>
+              <li>Z : rotate piece clockwise</li>
+              <li>Q : rotate hive left</li>
+              <li>P : pause</li>
+            </ul>
+          </div>
+          <div>
+            <h3>Mobile</h3>
+            <ul>
+              <li>Drag the piece to move it</li>
+              <li>Tap the piece to rotate</li>
+              <li>Tap empty space to hard drop</li>
+              <li>Swipe down for soft drop</li>
+              <li>Tap ↺ to rotate the hive</li>
+            </ul>
+          </div>
       </div>
       <p class="help-note">Rotate the hive to choose which wall is “down”. Blocks only move from gravity and line clears.</p>
     </div>

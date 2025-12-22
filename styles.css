@@ -46,9 +46,7 @@ body {
 button,
 .game-ui,
 .controls,
-.hud,
-.mobile-controls,
-.control-btn {
+.hud {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
@@ -158,71 +156,6 @@ button,
   height: 100%;
   display: block;
   -webkit-tap-highlight-color: transparent;
-}
-
-.mobile-controls {
-  margin-top: 0.75rem;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
-  gap: 0.5rem;
-  justify-content: center;
-}
-
-.control-btn {
-  padding: 0.8rem 1.1rem;
-  border-radius: 999px;
-  border: none;
-  cursor: pointer;
-  font-weight: 700;
-  font-size: 1rem;
-  background: var(--accent-honey, #fbbf24);
-  color: #1a1005;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.35);
-  min-width: 64px;
-  min-height: 48px;
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
-}
-
-.control-btn:active {
-  transform: scale(0.97);
-}
-
-/* Touch control zones */
-
-.touch-zone {
-  position: absolute;
-  z-index: 5;
-  touch-action: none;
-}
-
-.touch-zone.left,
-.touch-zone.right {
-  top: 0;
-  bottom: 0;
-  width: 28%;
-}
-
-.touch-zone.left {
-  left: 0;
-}
-
-.touch-zone.right {
-  right: 0;
-}
-
-.touch-zone.top,
-.touch-zone.bottom {
-  left: 28%;
-  right: 28%;
-  height: 30%;
-}
-
-.touch-zone.top {
-  top: 0;
-}
-
-.touch-zone.bottom {
-  bottom: 0;
 }
 
 /* Side panel */
