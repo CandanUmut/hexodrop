@@ -98,6 +98,8 @@
   let hoverTargetAxial = null;
   let dragTargetAxial = null;
   let dragPointerActive = false;
+  let hoverActive = false;
+  let hoverBaseH = 0;
 
   // ---------- Audio helpers ----------
 
@@ -647,6 +649,9 @@
 
     if (canPieceExist(spawnPiece)) {
       currentPiece = spawnPiece;
+      if (hoverActive) {
+        setHoverBaseFromCurrentPiece();
+      }
     } else {
       gameState = GAME_STATES.GAMEOVER;
       debugLog("Spawn blocked", spawnPiece);
@@ -847,6 +852,8 @@
     rotationStartAngle = 0;
     rotationProgress = 1;
     hiveShakeTime = 0;
+    hoverActive = false;
+    hoverBaseH = 0;
     recomputeDirectionMapping();
   }
 
@@ -862,6 +869,8 @@
     linesClearedTotal = 0;
     fallInterval = 0.9;
     cellEffects = [];
+    hoverActive = false;
+    hoverBaseH = 0;
 
     recomputeDirectionMapping();
     spawnNextPieceOrGameOver();
@@ -927,6 +936,9 @@
       const gdir = HEX_DIRECTIONS[gravityDirIndex];
       if (gdir) {
         const moved = movePiece(gdir.q, gdir.r);
+        if (moved && hoverActive) {
+          hoverBaseH += 2;
+        }
         if (!moved) {
           lockPiece();
         }
@@ -999,12 +1011,46 @@
     return global.axialRound(fq, fr);
   }
 
+  function heightKey(qPrim, rPrim) {
+    return 2 * rPrim + qPrim;
+  }
+
+  function setHoverBaseFromCurrentPiece() {
+    if (!currentPiece) return;
+    const steps = stepsToCanonicalDown();
+    const pivotPrim = global.rotateAxial(currentPiece.pivotQ, currentPiece.pivotR, steps);
+    hoverBaseH = heightKey(pivotPrim.q, pivotPrim.r);
+  }
+
+  function activateHoverTracking() {
+    setHoverBaseFromCurrentPiece();
+    hoverActive = true;
+  }
+
+  function ensureHoverTracking() {
+    if (!currentPiece) return;
+    if (!hoverActive) {
+      activateHoverTracking();
+    }
+  }
+
+  function deactivateHoverTracking() {
+    hoverActive = false;
+  }
+
+  function maybeDeactivateHoverTracking() {
+    if (!dragPointerActive && !hoverTargetAxial && !dragTargetAxial) {
+      deactivateHoverTracking();
+    }
+  }
+
   function nudgePieceToward(target, maxSteps = 3, deadzone = 0) {
     if (gameState !== GAME_STATES.PLAYING) return;
     if (!currentPiece || !target) return;
 
     // Determine canonical frame where gravity points +r'
     const steps = stepsToCanonicalDown();
+    const inverseSteps = (6 - steps) % 6;
     const pivot = { q: currentPiece.pivotQ, r: currentPiece.pivotR };
     const pivotPrim = global.rotateAxial(pivot.q, pivot.r, steps);
     const targetPrim = global.rotateAxial(target.q, target.r, steps);
@@ -1012,35 +1058,35 @@
     const deltaQ = targetPrim.q - pivotPrim.q;
     if (Math.abs(deltaQ) <= deadzone) return;
 
-    // Sideways directions are perpendicular to gravity
-    const sideAIndex = (gravityDirIndex + 2) % 6;
-    const sideBIndex = (gravityDirIndex + 4) % 6;
-    const sideADir = HEX_DIRECTIONS[sideAIndex];
-    const sideBDir = HEX_DIRECTIONS[sideBIndex];
-    if (!sideADir || !sideBDir) return;
+    const currentH = heightKey(pivotPrim.q, pivotPrim.r);
+    const candidates =
+      deltaQ > 0
+        ? [
+            { dq: 1, dr: 0 },
+            { dq: 1, dr: -1 }
+          ]
+        : [
+            { dq: -1, dr: 0 },
+            { dq: -1, dr: 1 }
+          ];
 
-    const testA = global.rotateAxial(pivot.q + sideADir.q, pivot.r + sideADir.r, steps);
-    const testB = global.rotateAxial(pivot.q + sideBDir.q, pivot.r + sideBDir.r, steps);
+    const scored = candidates
+      .map((step) => {
+        const deltaH = 2 * step.dr + step.dq;
+        const score = Math.abs(currentH + deltaH - hoverBaseH);
+        const stepOrig = global.rotateAxial(step.dq, step.dr, inverseSteps);
+        const test = clonePiece(currentPiece);
+        test.pivotQ += stepOrig.q;
+        test.pivotR += stepOrig.r;
+        const valid = canPieceExist(test);
+        return { ...step, score, stepOrig, valid };
+      })
+      .sort((a, b) => a.score - b.score);
 
-    let dirPlusQprim = sideADir;
-    let dirMinusQprim = sideBDir;
-
-    if (testA.q > pivotPrim.q && testB.q < pivotPrim.q) {
-      dirPlusQprim = sideADir;
-      dirMinusQprim = sideBDir;
-    } else if (testB.q > pivotPrim.q && testA.q < pivotPrim.q) {
-      dirPlusQprim = sideBDir;
-      dirMinusQprim = sideADir;
-    } else if (testB.q > testA.q) {
-      dirPlusQprim = sideBDir;
-      dirMinusQprim = sideADir;
-    }
-
-    const moveDir = deltaQ > 0 ? dirPlusQprim : dirMinusQprim;
-    const maxAttempts = 1; // throttle to one sideways step per tick
-
-    for (let step = 0; step < maxAttempts; step++) {
-      if (!movePiece(moveDir.q, moveDir.r)) break;
+    for (const step of scored) {
+      if (!step.valid) continue;
+      const moved = movePiece(step.stepOrig.q, step.stepOrig.r);
+      if (moved) break;
     }
   }
 
@@ -1486,6 +1532,9 @@
     const gdir = HEX_DIRECTIONS[gravityDirIndex];
     if (!gdir) return;
     const moved = movePiece(gdir.q, gdir.r);
+    if (moved && hoverActive) {
+      hoverBaseH += 2;
+    }
     if (!moved) {
       lockPiece();
     }
@@ -1597,18 +1646,26 @@
 
     function setHoverTarget(pos) {
       hoverTargetAxial = pixelToAxial(pos.x, pos.y);
+      if (gameState === GAME_STATES.PLAYING) {
+        ensureHoverTracking();
+      }
     }
 
     function clearHoverTarget() {
       hoverTargetAxial = null;
+      maybeDeactivateHoverTracking();
     }
 
     function setDragTarget(pos) {
       dragTargetAxial = pixelToAxial(pos.x, pos.y);
+      if (gameState === GAME_STATES.PLAYING) {
+        ensureHoverTracking();
+      }
     }
 
     function clearDragTarget() {
       dragTargetAxial = null;
+      maybeDeactivateHoverTracking();
     }
 
     function maybeSoftDrop(deltaX, deltaY) {
@@ -1633,6 +1690,10 @@
     function tickInput() {
       if (gameState !== GAME_STATES.PLAYING) return;
       if (!currentPiece) return;
+
+      if (hoverTargetAxial || dragTargetAxial) {
+        ensureHoverTracking();
+      }
 
       if (dragPointerActive && dragTargetAxial) {
         nudgePieceToward(dragTargetAxial, dragStepsPerFrame, followDeadzone);
