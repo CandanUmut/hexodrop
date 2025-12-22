@@ -42,6 +42,7 @@
   let btnPause;
   let btnRestart;
   let btnLeaderboard;
+  let btnDrop;
 
   let inputController;
 
@@ -77,6 +78,7 @@
     btnPause = document.getElementById("btn-pause");
     btnRestart = document.getElementById("btn-restart");
     btnLeaderboard = document.getElementById("btn-leaderboard");
+    btnDrop = document.getElementById("btn-drop");
 
     setupButtons();
     setupNicknameModal();
@@ -120,6 +122,12 @@
     btnLeaderboard.addEventListener("click", async () => {
       await openLeaderboard();
     });
+
+    if (btnDrop) {
+      btnDrop.addEventListener("click", () => {
+        HexHiveGame.handleHardDrop();
+      });
+    }
   }
 
   function setupHelpOverlay() {
