@@ -52,9 +52,35 @@
     return { q: x, r: z };
   }
 
+  // Round a fractional axial coordinate to the nearest hex using cube rounding.
+  function axialRound(q, r) {
+    let x = q;
+    let z = r;
+    let y = -x - z;
+
+    let rx = Math.round(x);
+    let ry = Math.round(y);
+    let rz = Math.round(z);
+
+    const xDiff = Math.abs(rx - x);
+    const yDiff = Math.abs(ry - y);
+    const zDiff = Math.abs(rz - z);
+
+    if (xDiff > yDiff && xDiff > zDiff) {
+      rx = -ry - rz;
+    } else if (yDiff > zDiff) {
+      ry = -rx - rz;
+    } else {
+      rz = -rx - ry;
+    }
+
+    return { q: rx, r: rz };
+  }
+
   global.HEX_SIZE = HEX_SIZE;
   global.HEX_DIRECTIONS = HEX_DIRECTIONS;
   global.axialToPixel = axialToPixel;
   global.hexNeighbors = neighbors;
   global.rotateAxial = rotateAxial;
+  global.axialRound = axialRound;
 })(window);

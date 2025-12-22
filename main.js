@@ -43,63 +43,7 @@
   let btnRestart;
   let btnLeaderboard;
 
-  // Hive + drop buttons
-  let btnRotateHiveLeft;
-  let btnDrop;
-  let btnRotateHiveRight;
-
-  // Yeni: piece kontrol butonları
-  let btnPieceLeft;
-  let btnPieceRight;
-  let btnPieceRotateCW;
-  let btnPieceRotateCCW;
-  let btnSoftDrop;
-
-  function setupGestureGuards() {
-    const gestureTargets = [];
-    if (canvas) gestureTargets.push(canvas);
-    const gameContainer = document.querySelector(".game-container");
-    if (gameContainer) gestureTargets.push(gameContainer);
-    document
-      .querySelectorAll(".mobile-controls, .controls, .button-row")
-      .forEach((el) => gestureTargets.push(el));
-
-    const preventGestures = (e) => e.preventDefault();
-    const preventWhenPlaying = (e) => {
-      if (e.touches && e.touches.length > 1) {
-        e.preventDefault();
-        return;
-      }
-      const state = HexHiveGame.getState();
-      if (state === HexHiveGame.GAME_STATES.PLAYING) {
-        e.preventDefault();
-      }
-    };
-
-    gestureTargets.forEach((el) => {
-      el.addEventListener("gesturestart", preventGestures, { passive: false });
-      el.addEventListener("gesturechange", preventGestures, { passive: false });
-      el.addEventListener("gestureend", preventGestures, { passive: false });
-      el.addEventListener("touchstart", preventWhenPlaying, { passive: false });
-      el.addEventListener("touchmove", preventWhenPlaying, { passive: false });
-    });
-
-    let lastTouchEnd = 0;
-    const tapTargets = document.querySelectorAll(
-      ".control-btn, .button-row button, #btn-help, #leaderboard-close, #nickname-save, #gameover-restart, #gameover-menu"
-    );
-    tapTargets.forEach((el) => {
-      el.addEventListener(
-        "touchend",
-        (e) => {
-          const now = Date.now();
-          if (now - lastTouchEnd <= 250) e.preventDefault();
-          lastTouchEnd = now;
-        },
-        { passive: false }
-      );
-    });
-  }
+  let inputController;
 
   function initDom() {
     canvas = document.getElementById("game-canvas");
@@ -134,22 +78,7 @@
     btnRestart = document.getElementById("btn-restart");
     btnLeaderboard = document.getElementById("btn-leaderboard");
 
-    btnRotateHiveLeft = document.getElementById("btn-rotate-hive-left");
-    btnDrop = document.getElementById("btn-drop");
-    btnRotateHiveRight = document.getElementById("btn-rotate-hive-right");
-
-    // Yeni: piece butonları
-    btnPieceLeft = document.getElementById("btn-piece-left");
-    btnPieceRight = document.getElementById("btn-piece-right");
-    btnPieceRotateCW = document.getElementById("btn-piece-rotate-cw");
-    btnPieceRotateCCW = document.getElementById("btn-piece-rotate-ccw");
-    btnSoftDrop = document.getElementById("btn-soft-drop");
-
     setupButtons();
-    setupKeyboard();
-    setupTouchZones();
-    setupMobileControls();
-    setupPieceButtons();
     setupNicknameModal();
     setupLeaderboardModal();
     setupGameoverModal();
@@ -193,100 +122,6 @@
     });
   }
 
-  function setupKeyboard() {
-    window.addEventListener("keydown", (e) => {
-      if (helpVisible) {
-        if (e.key === "Escape" || e.key === "?" || e.key === "/") {
-          e.preventDefault();
-          hideHelp();
-        }
-        return;
-      }
-
-      const state = HexHiveGame.getState();
-      if (state === HexHiveGame.GAME_STATES.MENU) {
-        // Sadece Space / Drop ile oyuna başlayalım
-        if (e.key === " " || e.key === "Spacebar") {
-          e.preventDefault();
-          HexHiveGame.startGame();
-          updateButtonStates();
-        }
-        return;
-      }
-
-      switch (e.key) {
-        case "ArrowLeft":
-          e.preventDefault();
-          HexHiveGame.handleMoveLeft();
-          break;
-        case "ArrowRight":
-          e.preventDefault();
-          HexHiveGame.handleMoveRight();
-          break;
-        case "ArrowDown":
-          e.preventDefault();
-          HexHiveGame.handleSoftDrop();
-          break;
-        case "ArrowUp":
-        case "x":
-        case "X":
-          e.preventDefault();
-          HexHiveGame.handleRotateCW();
-          break;
-        case "z":
-        case "Z":
-          e.preventDefault();
-          HexHiveGame.handleRotateCCW();
-          break;
-        case " ":
-          e.preventDefault();
-          HexHiveGame.handleHardDrop();
-          break;
-        // Yeni: hive rotasyonu
-        case "q":
-        case "Q":
-          e.preventDefault();
-          HexHiveGame.handleRotateHiveLeft();
-          break;
-        case "e":
-        case "E":
-          e.preventDefault();
-          HexHiveGame.handleRotateHiveRight();
-          break;
-        case "p":
-        case "P":
-          e.preventDefault();
-          HexHiveGame.togglePause();
-          updateButtonStates();
-          break;
-        case "?":
-          e.preventDefault();
-          showHelp();
-          break;
-      }
-    });
-  }
-
-  function setupTouchZones() {
-    const leftZone = document.getElementById("touch-left");
-    const rightZone = document.getElementById("touch-right");
-    const topZone = document.getElementById("touch-top");
-    const bottomZone = document.getElementById("touch-bottom");
-
-    function attach(zone, handler) {
-      if (!zone) return;
-      zone.addEventListener("pointerdown", (e) => {
-        e.preventDefault();
-        handler();
-      });
-    }
-
-    attach(leftZone, () => HexHiveGame.handleMoveLeft());
-    attach(rightZone, () => HexHiveGame.handleMoveRight());
-    attach(topZone, () => HexHiveGame.handleRotateCW());
-    attach(bottomZone, () => HexHiveGame.handleSoftDrop());
-  }
-
   function setupHelpOverlay() {
     if (helpToggleBtn) {
       helpToggleBtn.addEventListener("click", () => showHelp());
@@ -313,64 +148,6 @@
     if (!helpOverlay) return;
     helpOverlay.classList.add("hidden");
     helpVisible = false;
-  }
-
-  function setupMobileControls() {
-    if (btnRotateHiveLeft) {
-      btnRotateHiveLeft.addEventListener("click", () => {
-        HexHiveGame.handleRotateHiveLeft();
-      });
-    }
-
-    if (btnDrop) {
-      btnDrop.addEventListener("click", () => {
-        const state = HexHiveGame.getState();
-        if (state === HexHiveGame.GAME_STATES.MENU) {
-          HexHiveGame.startGame();
-        } else if (state === HexHiveGame.GAME_STATES.GAMEOVER) {
-          HexHiveGame.resetGame();
-          HexHiveGame.startGame();
-        } else if (state === HexHiveGame.GAME_STATES.PLAYING) {
-          HexHiveGame.handleHardDrop();
-        }
-        updateButtonStates();
-      });
-    }
-
-    if (btnRotateHiveRight) {
-      btnRotateHiveRight.addEventListener("click", () => {
-        HexHiveGame.handleRotateHiveRight();
-      });
-    }
-  }
-
-  // Yeni: parça kontrol butonları
-  function setupPieceButtons() {
-    if (btnPieceLeft) {
-      btnPieceLeft.addEventListener("click", () => {
-        HexHiveGame.handleMoveLeft();
-      });
-    }
-    if (btnPieceRight) {
-      btnPieceRight.addEventListener("click", () => {
-        HexHiveGame.handleMoveRight();
-      });
-    }
-    if (btnPieceRotateCW) {
-      btnPieceRotateCW.addEventListener("click", () => {
-        HexHiveGame.handleRotateCW();
-      });
-    }
-    if (btnPieceRotateCCW) {
-      btnPieceRotateCCW.addEventListener("click", () => {
-        HexHiveGame.handleRotateCCW();
-      });
-    }
-    if (btnSoftDrop) {
-      btnSoftDrop.addEventListener("click", () => {
-        HexHiveGame.handleSoftDrop();
-      });
-    }
   }
 
   function setupNicknameModal() {
@@ -546,6 +323,9 @@
 
     HexHiveGame.updateGame(delta);
     HexHiveGame.renderGame(ctx);
+    if (inputController && typeof inputController.renderOverlay === "function") {
+      inputController.renderOverlay(ctx);
+    }
     updateStatsPanel();
 
     const state = HexHiveGame.getState();
@@ -559,9 +339,9 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     initDom();
-    setupGestureGuards();
     resizeCanvas();
     HexHiveGame.initGame(canvas, nextCanvas);
+    inputController = HexHiveGame.createInputController(canvas);
     resetStatTracking();
     updateButtonStates();
     lastGameState = HexHiveGame.getState();

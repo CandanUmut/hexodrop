@@ -958,6 +958,37 @@
     return { originX, originY, scale };
   }
 
+  function axialDistance(a, b) {
+    const dq = a.q - b.q;
+    const dr = a.r - b.r;
+    return (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2;
+  }
+
+  function pixelToAxial(x, y) {
+    const { originX, originY, scale } = getGridOrigin();
+    const center = projectCell(0, 0, originX, originY, scale);
+
+    // Convert to board-local pixels (pre-scale)
+    const localX = (x - originX) / scale;
+    const localY = (y - originY) / scale;
+    const centerLocalX = (center.x - originX) / scale;
+    const centerLocalY = (center.y - originY) / scale;
+
+    // Undo hive rotation so hit-tests align with logical grid
+    const cos = Math.cos(-hiveRotationAngle);
+    const sin = Math.sin(-hiveRotationAngle);
+    const relX = localX - centerLocalX;
+    const relY = localY - centerLocalY;
+    const rotX = relX * cos - relY * sin + centerLocalX;
+    const rotY = relX * sin + relY * cos + centerLocalY;
+
+    // Axial inversion for flat-topped layout (Red Blob Games)
+    const fq = ((2 / 3) * rotX) / HEX_SIZE;
+    const fr = ((-1 / 3) * rotX + (Math.sqrt(3) / 3) * rotY) / HEX_SIZE;
+
+    return global.axialRound(fq, fr);
+  }
+
   function projectCell(q, r, originX, originY, scale) {
     const base = global.axialToPixel(q, r, 0, 0);
     return {
@@ -1245,7 +1276,29 @@
     renderExitIndicator(ctx);
     ctx.restore(); // scene
 
+    renderMenuHint(ctx);
     renderNextPreview();
+  }
+
+  function renderMenuHint(ctx) {
+    if (gameState !== GAME_STATES.MENU) return;
+    ctx.save();
+    const margin = 18;
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.font = "18px 'Inter', 'Segoe UI', system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    ctx.fillText("Tap or click to start", gameWidth / 2, margin + 22);
+
+    ctx.font = "14px 'Inter', 'Segoe UI', system-ui, sans-serif";
+    ctx.fillStyle = "rgba(255, 220, 180, 0.9)";
+    ctx.textBaseline = "top";
+    ctx.fillText(
+      "Drag to move • Tap piece to rotate • Tap away to drop • Swipe down to soft drop",
+      gameWidth / 2,
+      gameHeight - margin - 34
+    );
+    ctx.restore();
   }
 
   function renderNextPreview() {
@@ -1398,6 +1451,354 @@
     rotateHiveRight();
   }
 
+  // ---------- Input controller (pointer + keyboard) ----------
+
+  function createInputController(canvas) {
+    if (!canvas) return null;
+
+    const tapDistanceSq = 8 * 8;
+    const tapDurationMs = 250;
+    const swipeDropThreshold = 30;
+    const softDropIntervalMs = 60;
+    const maxDragStepsPerFrame = 8;
+    const hiveButtonSize = 56;
+    const hiveButtonMargin = 12;
+
+    const state = {
+      pointerId: null,
+      downPos: null,
+      lastPos: null,
+      downTime: 0,
+      dragging: false,
+      totalDelta: { x: 0, y: 0 },
+      interactingWithHiveButton: false,
+      hiveButtonHover: false,
+      hiveButtonPressed: false,
+      lastSoftDrop: 0
+    };
+
+    function getHiveButtonRect() {
+      return {
+        x: hiveButtonMargin,
+        y: hiveButtonMargin,
+        size: hiveButtonSize
+      };
+    }
+
+    function rotatePoint(x, y, cx, cy, angle) {
+      const dx = x - cx;
+      const dy = y - cy;
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      return {
+        x: cx + dx * cos - dy * sin,
+        y: cy + dx * sin + dy * cos
+      };
+    }
+
+    function getPointerPos(evt) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: evt.clientX - rect.left,
+        y: evt.clientY - rect.top
+      };
+    }
+
+    function isOnHiveButton(pos) {
+      const rect = getHiveButtonRect();
+      return (
+        pos.x >= rect.x &&
+        pos.x <= rect.x + rect.size &&
+        pos.y >= rect.y &&
+        pos.y <= rect.y + rect.size
+      );
+    }
+
+    function isTapOnPiece(pos) {
+      if (!currentPiece) return false;
+      const tappedAxial = pixelToAxial(pos.x, pos.y);
+      const pieceCells = getPieceCells(currentPiece);
+      const onCell = pieceCells.some((c) => c.q === tappedAxial.q && c.r === tappedAxial.r);
+      if (onCell) return true;
+
+      const { originX, originY, scale } = getGridOrigin();
+      const pivotPos = projectCell(currentPiece.pivotQ, currentPiece.pivotR, originX, originY, scale);
+      const centerPos = projectCell(0, 0, originX, originY, scale);
+      const rotatedPivot = rotatePoint(
+        pivotPos.x,
+        pivotPos.y,
+        centerPos.x,
+        centerPos.y,
+        hiveRotationAngle
+      );
+      const dx = pos.x - rotatedPivot.x;
+      const dy = pos.y - rotatedPivot.y;
+      const radius = HEX_SIZE * scale * 1.25;
+      return dx * dx + dy * dy <= radius * radius;
+    }
+
+    function movePieceToward(pos) {
+      if (gameState !== GAME_STATES.PLAYING) return;
+      if (!currentPiece) return;
+
+      const target = pixelToAxial(pos.x, pos.y);
+      let steps = 0;
+
+      while (steps < maxDragStepsPerFrame) {
+        const pivot = { q: currentPiece.pivotQ, r: currentPiece.pivotR };
+        const currentDist = axialDistance(pivot, target);
+        if (currentDist <= 0) break;
+
+        const leftDir = HEX_DIRECTIONS[controlDirLeftIndex];
+        const rightDir = HEX_DIRECTIONS[controlDirRightIndex];
+        const { originX, originY, scale } = getGridOrigin();
+        const pivotPos = projectCell(pivot.q, pivot.r, originX, originY, scale);
+
+        const primaryDirs = [];
+        if (pos.x < pivotPos.x - 2 && leftDir) primaryDirs.push(leftDir);
+        if (pos.x > pivotPos.x + 2 && rightDir) primaryDirs.push(rightDir);
+
+        const baseline = axialDistance(pivot, target);
+        const rankedDirs = HEX_DIRECTIONS.map((dir) => {
+          const next = { q: pivot.q + dir.q, r: pivot.r + dir.r };
+          return { dir, dist: axialDistance(next, target) };
+        })
+          .filter((d) => d.dist < baseline)
+          .sort((a, b) => a.dist - b.dist)
+          .map((d) => d.dir);
+
+        const tried = new Set();
+        const attempts = [...primaryDirs, ...rankedDirs];
+        let moved = false;
+        for (const dir of attempts) {
+          const key = `${dir.q},${dir.r}`;
+          if (tried.has(key)) continue;
+          tried.add(key);
+          if (movePiece(dir.q, dir.r)) {
+            moved = true;
+            steps++;
+            break;
+          }
+        }
+
+        if (!moved) break;
+      }
+    }
+
+    function maybeSoftDrop(deltaX, deltaY) {
+      if (gameState !== GAME_STATES.PLAYING) return;
+      const now = performance.now();
+      if (
+        deltaY > swipeDropThreshold &&
+        Math.abs(deltaY) > Math.abs(deltaX) &&
+        now - state.lastSoftDrop > softDropIntervalMs
+      ) {
+        state.lastSoftDrop = now;
+        handleSoftDrop();
+      }
+    }
+
+    function maybeStartFromMenu() {
+      if (gameState === GAME_STATES.MENU) {
+        startGame();
+      }
+    }
+
+    function onPointerDown(evt) {
+      if (state.pointerId !== null) return;
+      const pos = getPointerPos(evt);
+      state.pointerId = evt.pointerId;
+      state.downPos = pos;
+      state.lastPos = pos;
+      state.downTime = performance.now();
+      state.dragging = false;
+      state.totalDelta = { x: 0, y: 0 };
+      state.interactingWithHiveButton = isOnHiveButton(pos);
+      state.hiveButtonPressed = state.interactingWithHiveButton;
+      state.hiveButtonHover = state.interactingWithHiveButton;
+
+      canvas.setPointerCapture(evt.pointerId);
+      evt.preventDefault();
+    }
+
+    function onPointerMove(evt) {
+      if (state.pointerId !== evt.pointerId) return;
+      const pos = getPointerPos(evt);
+      const deltaX = pos.x - state.downPos.x;
+      const deltaY = pos.y - state.downPos.y;
+      state.totalDelta = { x: deltaX, y: deltaY };
+      state.lastPos = pos;
+
+      if (state.interactingWithHiveButton) {
+        state.hiveButtonHover = isOnHiveButton(pos);
+      } else {
+        state.dragging = true;
+        if (gameState === GAME_STATES.MENU && Math.abs(deltaY) > 20) {
+          maybeStartFromMenu();
+        }
+        movePieceToward(pos);
+        maybeSoftDrop(deltaX, deltaY);
+      }
+
+      evt.preventDefault();
+    }
+
+    function onPointerUp(evt) {
+      if (state.pointerId !== evt.pointerId) return;
+      const pos = getPointerPos(evt);
+      const duration = performance.now() - state.downTime;
+      const dx = pos.x - state.downPos.x;
+      const dy = pos.y - state.downPos.y;
+      const distSq = dx * dx + dy * dy;
+      const isTap = distSq <= tapDistanceSq && duration <= tapDurationMs;
+
+      const wasOnButton = state.interactingWithHiveButton;
+      const buttonTriggered = wasOnButton && isOnHiveButton(pos);
+
+      if (buttonTriggered) {
+        if (gameState === GAME_STATES.PLAYING) {
+          handleRotateHiveLeft();
+        }
+      } else if (gameState === GAME_STATES.MENU) {
+        maybeStartFromMenu();
+      } else if (isTap) {
+        if (isTapOnPiece(pos)) {
+          handleRotateCW();
+        } else {
+          handleHardDrop();
+        }
+      }
+
+      cleanupPointer(evt.pointerId);
+      evt.preventDefault();
+    }
+
+    function onPointerCancel(evt) {
+      if (state.pointerId !== evt.pointerId) return;
+      cleanupPointer(evt.pointerId);
+    }
+
+    function cleanupPointer(pointerId) {
+      try {
+        canvas.releasePointerCapture(pointerId);
+      } catch (e) {}
+      state.pointerId = null;
+      state.downPos = null;
+      state.lastPos = null;
+      state.dragging = false;
+      state.totalDelta = { x: 0, y: 0 };
+      state.interactingWithHiveButton = false;
+      state.hiveButtonHover = false;
+      state.hiveButtonPressed = false;
+    }
+
+    function onKeyDown(e) {
+      if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) {
+        return;
+      }
+
+      const key = e.key;
+      const stateName = gameState;
+      let handled = false;
+
+      if (stateName === GAME_STATES.MENU && (key === " " || key === "Enter")) {
+        startGame();
+        handled = true;
+      }
+
+      switch (key) {
+        case "ArrowLeft":
+          handleMoveLeft();
+          handled = true;
+          break;
+        case "ArrowRight":
+          handleMoveRight();
+          handled = true;
+          break;
+        case "ArrowDown":
+          handleSoftDrop();
+          handled = true;
+          break;
+        case "ArrowUp":
+          handleHardDrop();
+          handled = true;
+          break;
+        case "z":
+        case "Z":
+          handleRotateCW();
+          handled = true;
+          break;
+        case "q":
+        case "Q":
+          handleRotateHiveLeft();
+          handled = true;
+          break;
+        case "p":
+        case "P":
+          togglePause();
+          handled = true;
+          break;
+      }
+
+      if (handled) {
+        e.preventDefault();
+      }
+    }
+
+    function renderOverlay(ctx) {
+      if (!ctx) return;
+      const rect = getHiveButtonRect();
+      const baseAlpha = state.hiveButtonHover ? 0.65 : 0.52;
+      const pressScale = state.hiveButtonPressed && state.hiveButtonHover ? 0.96 : 1;
+      ctx.save();
+      ctx.translate(rect.x + rect.size / 2, rect.y + rect.size / 2);
+      ctx.scale(pressScale, pressScale);
+      ctx.translate(-rect.size / 2, -rect.size / 2);
+
+      const radius = 12;
+      ctx.fillStyle = `rgba(18, 12, 26, ${baseAlpha})`;
+      ctx.strokeStyle = "rgba(255,255,255,0.25)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(radius, 0);
+      ctx.lineTo(rect.size - radius, 0);
+      ctx.quadraticCurveTo(rect.size, 0, rect.size, radius);
+      ctx.lineTo(rect.size, rect.size - radius);
+      ctx.quadraticCurveTo(rect.size, rect.size, rect.size - radius, rect.size);
+      ctx.lineTo(radius, rect.size);
+      ctx.quadraticCurveTo(0, rect.size, 0, rect.size - radius);
+      ctx.lineTo(0, radius);
+      ctx.quadraticCurveTo(0, 0, radius, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = "#ffd56b";
+      ctx.font = "22px 'Inter', 'Segoe UI', system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("↺", rect.size / 2, rect.size / 2 + 1);
+      ctx.restore();
+    }
+
+    canvas.addEventListener("pointerdown", onPointerDown, { passive: false });
+    canvas.addEventListener("pointermove", onPointerMove, { passive: false });
+    canvas.addEventListener("pointerup", onPointerUp, { passive: false });
+    canvas.addEventListener("pointercancel", onPointerCancel, { passive: false });
+    window.addEventListener("keydown", onKeyDown);
+
+    return {
+      renderOverlay,
+      detach() {
+        canvas.removeEventListener("pointerdown", onPointerDown);
+        canvas.removeEventListener("pointermove", onPointerMove);
+        canvas.removeEventListener("pointerup", onPointerUp);
+        canvas.removeEventListener("pointercancel", onPointerCancel);
+        window.removeEventListener("keydown", onKeyDown);
+      }
+    };
+  }
+
   const HexHiveGame = {
     initGame,
     setSize,
@@ -1414,6 +1815,7 @@
     handleHardDrop,
     handleRotateHiveLeft,
     handleRotateHiveRight,
+    createInputController,
     getStats,
     getState,
     GAME_STATES
