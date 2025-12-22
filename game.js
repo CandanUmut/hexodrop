@@ -93,6 +93,12 @@
   // WebAudio fallback
   let audioCtx = null;
 
+  // Input state hooks
+  let inputTickFn = null;
+  let hoverTargetAxial = null;
+  let dragTargetAxial = null;
+  let dragPointerActive = false;
+
   // ---------- Audio helpers ----------
 
   function playAudioSafe(a) {
@@ -908,6 +914,10 @@
     tickEffects(deltaTime);
     updateHiveVisual(deltaTime);
 
+    if (typeof inputTickFn === "function") {
+      inputTickFn(deltaTime);
+    }
+
     if (gameState !== GAME_STATES.PLAYING) return;
     if (!currentPiece) return;
 
@@ -987,6 +997,63 @@
     const fr = ((-1 / 3) * rotX + (Math.sqrt(3) / 3) * rotY) / HEX_SIZE;
 
     return global.axialRound(fq, fr);
+  }
+
+  function nudgePieceToward(target, maxSteps = 3, deadzone = 0) {
+    if (gameState !== GAME_STATES.PLAYING) return;
+    if (!currentPiece || !target) return;
+
+    const maxAttempts = Math.max(1, maxSteps);
+
+    for (let step = 0; step < maxAttempts; step++) {
+      const pivot = { q: currentPiece.pivotQ, r: currentPiece.pivotR };
+      const baseline = axialDistance(pivot, target);
+      if (baseline <= deadzone) {
+        break;
+      }
+
+      const leftDir = HEX_DIRECTIONS[controlDirLeftIndex];
+      const rightDir = HEX_DIRECTIONS[controlDirRightIndex];
+
+      const ranked = [];
+      const preferred = [];
+
+      if (leftDir) {
+        const next = { q: pivot.q + leftDir.q, r: pivot.r + leftDir.r };
+        const dist = axialDistance(next, target);
+        if (dist < baseline) preferred.push({ dir: leftDir, dist });
+      }
+      if (rightDir) {
+        const next = { q: pivot.q + rightDir.q, r: pivot.r + rightDir.r };
+        const dist = axialDistance(next, target);
+        if (dist < baseline) preferred.push({ dir: rightDir, dist });
+      }
+
+      HEX_DIRECTIONS.forEach((dir) => {
+        const next = { q: pivot.q + dir.q, r: pivot.r + dir.r };
+        const dist = axialDistance(next, target);
+        if (dist < baseline) {
+          ranked.push({ dir, dist });
+        }
+      });
+
+      const attempts = [
+        ...preferred.sort((a, b) => a.dist - b.dist),
+        ...ranked
+          .filter((d) => !preferred.some((p) => p.dir === d.dir))
+          .sort((a, b) => a.dist - b.dist)
+      ];
+
+      let moved = false;
+      for (const attempt of attempts) {
+        if (movePiece(attempt.dir.q, attempt.dir.r)) {
+          moved = true;
+          break;
+        }
+      }
+
+      if (!moved) break;
+    }
   }
 
   function projectCell(q, r, originX, originY, scale) {
@@ -1460,7 +1527,9 @@
     const tapDurationMs = 250;
     const swipeDropThreshold = 30;
     const softDropIntervalMs = 60;
-    const maxDragStepsPerFrame = 8;
+    const hoverStepsPerFrame = 3;
+    const dragStepsPerFrame = 4;
+    const followDeadzone = 0.4;
     const hiveButtonSize = 56;
     const hiveButtonMargin = 12;
 
@@ -1470,6 +1539,7 @@
       lastPos: null,
       downTime: 0,
       dragging: false,
+      pointerType: null,
       totalDelta: { x: 0, y: 0 },
       interactingWithHiveButton: false,
       hiveButtonHover: false,
@@ -1537,52 +1607,20 @@
       return dx * dx + dy * dy <= radius * radius;
     }
 
-    function movePieceToward(pos) {
-      if (gameState !== GAME_STATES.PLAYING) return;
-      if (!currentPiece) return;
+    function setHoverTarget(pos) {
+      hoverTargetAxial = pixelToAxial(pos.x, pos.y);
+    }
 
-      const target = pixelToAxial(pos.x, pos.y);
-      let steps = 0;
+    function clearHoverTarget() {
+      hoverTargetAxial = null;
+    }
 
-      while (steps < maxDragStepsPerFrame) {
-        const pivot = { q: currentPiece.pivotQ, r: currentPiece.pivotR };
-        const currentDist = axialDistance(pivot, target);
-        if (currentDist <= 0) break;
+    function setDragTarget(pos) {
+      dragTargetAxial = pixelToAxial(pos.x, pos.y);
+    }
 
-        const leftDir = HEX_DIRECTIONS[controlDirLeftIndex];
-        const rightDir = HEX_DIRECTIONS[controlDirRightIndex];
-        const { originX, originY, scale } = getGridOrigin();
-        const pivotPos = projectCell(pivot.q, pivot.r, originX, originY, scale);
-
-        const primaryDirs = [];
-        if (pos.x < pivotPos.x - 2 && leftDir) primaryDirs.push(leftDir);
-        if (pos.x > pivotPos.x + 2 && rightDir) primaryDirs.push(rightDir);
-
-        const baseline = axialDistance(pivot, target);
-        const rankedDirs = HEX_DIRECTIONS.map((dir) => {
-          const next = { q: pivot.q + dir.q, r: pivot.r + dir.r };
-          return { dir, dist: axialDistance(next, target) };
-        })
-          .filter((d) => d.dist < baseline)
-          .sort((a, b) => a.dist - b.dist)
-          .map((d) => d.dir);
-
-        const tried = new Set();
-        const attempts = [...primaryDirs, ...rankedDirs];
-        let moved = false;
-        for (const dir of attempts) {
-          const key = `${dir.q},${dir.r}`;
-          if (tried.has(key)) continue;
-          tried.add(key);
-          if (movePiece(dir.q, dir.r)) {
-            moved = true;
-            steps++;
-            break;
-          }
-        }
-
-        if (!moved) break;
-      }
+    function clearDragTarget() {
+      dragTargetAxial = null;
     }
 
     function maybeSoftDrop(deltaX, deltaY) {
@@ -1604,7 +1642,24 @@
       }
     }
 
+    function tickInput() {
+      if (gameState !== GAME_STATES.PLAYING) return;
+      if (!currentPiece) return;
+
+      if (dragPointerActive && dragTargetAxial) {
+        nudgePieceToward(dragTargetAxial, dragStepsPerFrame, followDeadzone);
+      } else if (hoverTargetAxial) {
+        nudgePieceToward(hoverTargetAxial, hoverStepsPerFrame, followDeadzone);
+      }
+    }
+
     function onPointerDown(evt) {
+      if (evt.button === 2) {
+        handleHardDrop();
+        evt.preventDefault();
+        return;
+      }
+
       if (state.pointerId !== null) return;
       const pos = getPointerPos(evt);
       state.pointerId = evt.pointerId;
@@ -1612,18 +1667,32 @@
       state.lastPos = pos;
       state.downTime = performance.now();
       state.dragging = false;
+      state.pointerType = evt.pointerType;
       state.totalDelta = { x: 0, y: 0 };
       state.interactingWithHiveButton = isOnHiveButton(pos);
       state.hiveButtonPressed = state.interactingWithHiveButton;
       state.hiveButtonHover = state.interactingWithHiveButton;
+
+      if (!state.interactingWithHiveButton) {
+        dragPointerActive = true;
+        setDragTarget(pos);
+      }
 
       canvas.setPointerCapture(evt.pointerId);
       evt.preventDefault();
     }
 
     function onPointerMove(evt) {
-      if (state.pointerId !== evt.pointerId) return;
+      if (state.pointerId !== null && state.pointerId !== evt.pointerId) return;
       const pos = getPointerPos(evt);
+
+      if (state.pointerId === null) {
+        if (evt.pointerType === "mouse" && evt.buttons === 0) {
+          setHoverTarget(pos);
+        }
+        return;
+      }
+
       const deltaX = pos.x - state.downPos.x;
       const deltaY = pos.y - state.downPos.y;
       state.totalDelta = { x: deltaX, y: deltaY };
@@ -1636,7 +1705,8 @@
         if (gameState === GAME_STATES.MENU && Math.abs(deltaY) > 20) {
           maybeStartFromMenu();
         }
-        movePieceToward(pos);
+        dragPointerActive = true;
+        setDragTarget(pos);
         maybeSoftDrop(deltaX, deltaY);
       }
 
@@ -1661,12 +1731,12 @@
         }
       } else if (gameState === GAME_STATES.MENU) {
         maybeStartFromMenu();
-      } else if (isTap) {
-        if (isTapOnPiece(pos)) {
-          handleRotateCW();
-        } else {
-          handleHardDrop();
-        }
+      } else if (isTap && isTapOnPiece(pos)) {
+        handleRotateCW();
+      }
+
+      if (evt.pointerType === "mouse") {
+        setHoverTarget(pos);
       }
 
       cleanupPointer(evt.pointerId);
@@ -1686,10 +1756,13 @@
       state.downPos = null;
       state.lastPos = null;
       state.dragging = false;
+      state.pointerType = null;
       state.totalDelta = { x: 0, y: 0 };
       state.interactingWithHiveButton = false;
       state.hiveButtonHover = false;
       state.hiveButtonPressed = false;
+      dragPointerActive = false;
+      clearDragTarget();
     }
 
     function onKeyDown(e) {
@@ -1720,17 +1793,16 @@
           handled = true;
           break;
         case "ArrowUp":
-          handleHardDrop();
-          handled = true;
-          break;
-        case "z":
-        case "Z":
           handleRotateCW();
           handled = true;
           break;
         case "q":
         case "Q":
           handleRotateHiveLeft();
+          handled = true;
+          break;
+        case " ":
+          handleHardDrop();
           handled = true;
           break;
         case "p":
@@ -1744,6 +1816,21 @@
         e.preventDefault();
       }
     }
+
+    function onPointerLeave() {
+      if (!dragPointerActive) {
+        clearHoverTarget();
+      }
+    }
+
+    function onDblClick(e) {
+      if (gameState === GAME_STATES.PLAYING) {
+        handleHardDrop();
+        e.preventDefault();
+      }
+    }
+
+    const preventContextMenu = (e) => e.preventDefault();
 
     function renderOverlay(ctx) {
       if (!ctx) return;
@@ -1785,7 +1872,12 @@
     canvas.addEventListener("pointermove", onPointerMove, { passive: false });
     canvas.addEventListener("pointerup", onPointerUp, { passive: false });
     canvas.addEventListener("pointercancel", onPointerCancel, { passive: false });
+    canvas.addEventListener("pointerleave", onPointerLeave, { passive: true });
+    canvas.addEventListener("dblclick", onDblClick, { passive: false });
+    canvas.addEventListener("contextmenu", preventContextMenu);
     window.addEventListener("keydown", onKeyDown);
+
+    inputTickFn = tickInput;
 
     return {
       renderOverlay,
@@ -1794,7 +1886,13 @@
         canvas.removeEventListener("pointermove", onPointerMove);
         canvas.removeEventListener("pointerup", onPointerUp);
         canvas.removeEventListener("pointercancel", onPointerCancel);
+        canvas.removeEventListener("pointerleave", onPointerLeave);
+        canvas.removeEventListener("dblclick", onDblClick);
+        canvas.removeEventListener("contextmenu", preventContextMenu);
         window.removeEventListener("keydown", onKeyDown);
+        inputTickFn = null;
+        clearHoverTarget();
+        clearDragTarget();
       }
     };
   }

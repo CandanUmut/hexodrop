@@ -29,6 +29,7 @@
       <div class="game-column">
         <div class="game-container">
           <canvas id="game-canvas"></canvas>
+          <button id="btn-drop" class="drop-button" aria-label="Hard drop piece">DROP</button>
         </div>
       </div>
 
@@ -73,8 +74,9 @@
           <p>• Fill an entire ring around the center to clear it and score points.</p>
           <p>• Keep stacking smartly so the hive doesn’t overflow.</p>
           <h2>Controls</h2>
-          <p>Keyboard: ← / → move, ↓ soft drop, ↑ hard drop, Z rotate piece, Q rotate hive, P pause.</p>
-          <p>Mouse / Touch: drag the piece, tap the piece to rotate, tap away to hard drop, swipe down to soft drop, tap ↺ to rotate the hive.</p>
+          <p>Keyboard: ← / → move, ↓ soft drop, ↑ rotate piece, Space hard drop, Q rotate hive, P pause.</p>
+          <p>Mouse: move the cursor to guide the piece, click the piece to rotate, right click (or double-click) to hard drop.</p>
+          <p>Touch: drag the piece to move, tap the piece to rotate, swipe down to soft drop, use the DROP button to hard drop, tap ↺ to rotate the hive.</p>
         </section>
       </aside>
     </main>
@@ -135,8 +137,9 @@
             <h3>Keyboard</h3>
             <ul>
               <li>← / → : move piece left / right</li>
-              <li>↓ : soft drop, ↑ : hard drop</li>
-              <li>Z : rotate piece clockwise</li>
+              <li>↓ : soft drop</li>
+              <li>↑ : rotate piece clockwise</li>
+              <li>Space : hard drop</li>
               <li>Q : rotate hive left</li>
               <li>P : pause</li>
             </ul>
@@ -146,8 +149,8 @@
             <ul>
               <li>Drag the piece to move it</li>
               <li>Tap the piece to rotate</li>
-              <li>Tap empty space to hard drop</li>
               <li>Swipe down for soft drop</li>
+              <li>Tap the DROP button to hard drop</li>
               <li>Tap ↺ to rotate the hive</li>
             </ul>
           </div>
