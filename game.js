@@ -275,7 +275,7 @@
     sounds.drop = loadAudio("./assets/sfx/drop.wav");
     sounds.lineClear = loadAudio("./assets/sfx/line_clear.wav");
     sounds.levelUp = loadAudio("./assets/sfx/level_up.wav");
-    sounds.gameOver = loadAudio("./assets/sfx/game_over.wav");
+    sounds.gameOver = loadAudio("./assets/sfx/game_over.mp3");
     sounds.uiClick = loadAudio("./assets/sfx/ui_click.wav");
     sounds.bgm = loadAudio("./assets/music/bgm_loop.mp3");
   }
