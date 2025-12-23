@@ -237,7 +237,7 @@
     sounds.levelUp = loadAudio("./assets/sfx/level_up.wav");
     sounds.gameOver = loadAudio("./assets/sfx/game_over.wav");
     sounds.uiClick = loadAudio("./assets/sfx/ui_click.wav");
-    sounds.bgm = loadAudio("./assets/music/bgm_loop.ogg");
+    sounds.bgm = loadAudio("./assets/music/bgm_loop.mp3");
   }
 
   // ---------- Grid helpers ----------
