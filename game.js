@@ -187,7 +187,7 @@
     bgmStarted = true;
     try {
       sounds.bgm.loop = true;
-      sounds.bgm.volume = 0.45;
+      sounds.bgm.volume = 0.135;
       const p = sounds.bgm.play();
       if (p && typeof p.catch === "function") {
         p.catch(() => {
@@ -1173,6 +1173,14 @@
     };
   }
 
+  function rotatePointAround(x, y, cx, cy, angle) {
+    const dx = x - cx;
+    const dy = y - cy;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
+  }
+
   function getCurrentPieceCenterX() {
     if (!currentPiece) return null;
     const cells = getPieceCells(currentPiece);
@@ -1185,16 +1193,30 @@
     return center.x;
   }
 
+  function getCurrentPieceCenterXScreen() {
+    if (!currentPiece) return null;
+    const cells = getPieceCells(currentPiece);
+    if (!cells.length) return null;
+
+    const avgQ = cells.reduce((sum, c) => sum + c.q, 0) / cells.length;
+    const avgR = cells.reduce((sum, c) => sum + c.r, 0) / cells.length;
+
+    const { originX, originY, scale } = getGridOrigin();
+    const p = projectCell(avgQ, avgR, originX, originY, scale);
+    const center = projectCell(0, 0, originX, originY, scale);
+
+    const pr = rotatePointAround(p.x, p.y, center.x, center.y, hiveRotationAngle);
+    return pr.x;
+  }
+
   function nudgePieceTowardPointer(targetPos, maxSteps = 2, deadzonePx = 10) {
     if (gameState !== GAME_STATES.PLAYING) return;
     if (!currentPiece || !targetPos) return;
 
-    const localTarget = screenToHiveLocal(targetPos.x, targetPos.y);
-
-    const pieceCenterX = getCurrentPieceCenterX();
+    const pieceCenterX = getCurrentPieceCenterXScreen();
     if (pieceCenterX == null) return;
 
-    const deltaX = localTarget.x - pieceCenterX;
+    const deltaX = targetPos.x - pieceCenterX;
     if (Math.abs(deltaX) <= deadzonePx) return;
 
     const moveFn =
@@ -1207,12 +1229,10 @@
     const moveSteps = Math.min(maxSteps, estimatedSteps);
 
     for (let i = 0; i < moveSteps; i++) {
-      const before = currentPiece ? { q: currentPiece.pivotQ, r: currentPiece.pivotR } : null;
+      const before = { q: currentPiece.pivotQ, r: currentPiece.pivotR };
       const moved = moveFn();
-      if (!moved || !currentPiece) break;
-      if (before && currentPiece.pivotQ === before.q && currentPiece.pivotR === before.r) {
-        break;
-      }
+      if (!moved) break;
+      if (currentPiece.pivotQ === before.q && currentPiece.pivotR === before.r) break;
     }
   }
 
@@ -1591,6 +1611,10 @@
     rotationStartAngle = hiveRotationAngle;
     targetRotationAngle = hiveRotationAngle + step * (Math.PI / 3);
     rotationProgress = 0;
+    hoverTargetPos = null;
+    dragTargetPos = null;
+    dragPointerActive = false;
+    hoverActive = false;
     hiveShakeTime = HIVE_SHAKE_DURATION;
     safePlaySound("rotate");
     debugLog("Hive rotate", { step, targetRotationAngle });
