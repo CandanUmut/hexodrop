@@ -90,6 +90,9 @@
 
   let bgmStarted = false;
 
+  let musicEnabled = true;
+  let sfxEnabled = true;
+
   // WebAudio fallback
   let audioCtx = null;
 
@@ -100,6 +103,9 @@
   let dragPointerActive = false;
   let hoverActive = false;
   let hoverBaseH = 0;
+
+  let rotatePopTimer = 0;
+  const ROTATE_POP_DURATION = 0.16;
 
   // ---------- Audio helpers ----------
 
@@ -115,6 +121,7 @@
   }
 
   function safePlaySound(soundKey) {
+    if (!sfxEnabled) return;
     const s = sounds[soundKey];
     if (s && !s._broken) {
       playAudioSafe(s);
@@ -124,6 +131,7 @@
   }
 
   function playBeep(type) {
+    if (!sfxEnabled) return;
     try {
       if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -173,6 +181,7 @@
 
   function safeLoopBgm() {
     if (!sounds.bgm) return;
+    if (!musicEnabled) return;
     if (bgmStarted) return;
     bgmStarted = true;
     try {
@@ -187,6 +196,37 @@
     } catch (e) {
       bgmStarted = false;
     }
+  }
+
+  function pauseBgm() {
+    if (sounds.bgm) {
+      try {
+        sounds.bgm.pause();
+      } catch (e) {}
+    }
+    bgmStarted = false;
+  }
+
+  function loadAudioPreferences() {
+    const storedMusic = localStorage.getItem("hexhive_music");
+    const storedSfx = localStorage.getItem("hexhive_sfx");
+    musicEnabled = storedMusic === null ? true : storedMusic === "1";
+    sfxEnabled = storedSfx === null ? true : storedSfx === "1";
+  }
+
+  function setMusicEnabled(enabled) {
+    musicEnabled = !!enabled;
+    localStorage.setItem("hexhive_music", musicEnabled ? "1" : "0");
+    if (!musicEnabled) {
+      pauseBgm();
+    } else if (gameState === GAME_STATES.PLAYING) {
+      safeLoopBgm();
+    }
+  }
+
+  function setSfxEnabled(enabled) {
+    sfxEnabled = !!enabled;
+    localStorage.setItem("hexhive_sfx", sfxEnabled ? "1" : "0");
   }
 
   // ---------- Asset loading ----------
@@ -497,6 +537,44 @@
     return false;
   }
 
+  function getPieceHeight(piece) {
+    const steps = stepsToCanonicalDown();
+    const pivotPrim = global.rotateAxial(piece.pivotQ, piece.pivotR, steps);
+    return heightKey(pivotPrim.q, pivotPrim.r);
+  }
+
+  function movePieceHorizontal(dirIndex) {
+    if (gameState !== GAME_STATES.PLAYING) return false;
+    if (!currentPiece) return false;
+    const step = HEX_DIRECTIONS[dirIndex];
+    if (!step) return false;
+
+    const currentH = getPieceHeight(currentPiece);
+    const primary = clonePiece(currentPiece);
+    primary.pivotQ += step.q;
+    primary.pivotR += step.r;
+    if (!canPieceExist(primary)) return false;
+
+    const movedHeight = getPieceHeight(primary);
+    if (movedHeight < currentH) {
+      const g = HEX_DIRECTIONS[gravityDirIndex];
+      if (g) {
+        const compensated = clonePiece(primary);
+        compensated.pivotQ += g.q;
+        compensated.pivotR += g.r;
+        const compensatedHeight = getPieceHeight(compensated);
+        if (compensatedHeight >= currentH && canPieceExist(compensated)) {
+          currentPiece = compensated;
+          return true;
+        }
+      }
+      return false;
+    }
+
+    currentPiece = primary;
+    return true;
+  }
+
   function rotatePiece(deltaRotation) {
     if (!currentPiece) return;
     const test = clonePiece(currentPiece);
@@ -504,6 +582,7 @@
     if (canPieceExist(test)) {
       currentPiece = test;
       safePlaySound("rotate");
+      rotatePopTimer = ROTATE_POP_DURATION;
       debugLog("Piece rotate", { rotation: currentPiece.rotation });
     }
   }
@@ -917,6 +996,9 @@
       fx.timer -= deltaTime;
     }
     cellEffects = cellEffects.filter((fx) => fx.timer > 0);
+    if (rotatePopTimer > 0) {
+      rotatePopTimer = Math.max(0, rotatePopTimer - deltaTime);
+    }
   }
 
   function updateGame(deltaTime) {
@@ -1058,35 +1140,13 @@
     const deltaQ = targetPrim.q - pivotPrim.q;
     if (Math.abs(deltaQ) <= deadzone) return;
 
-    const currentH = heightKey(pivotPrim.q, pivotPrim.r);
-    const candidates =
-      deltaQ > 0
-        ? [
-            { dq: 1, dr: 0 },
-            { dq: 1, dr: -1 }
-          ]
-        : [
-            { dq: -1, dr: 0 },
-            { dq: -1, dr: 1 }
-          ];
+    const directionIndex = deltaQ > 0 ? controlDirRightIndex : controlDirLeftIndex;
+    const steps = Math.min(maxSteps, Math.max(1, Math.round(Math.abs(deltaQ))));
 
-    const scored = candidates
-      .map((step) => {
-        const deltaH = 2 * step.dr + step.dq;
-        const score = Math.abs(currentH + deltaH - hoverBaseH);
-        const stepOrig = global.rotateAxial(step.dq, step.dr, inverseSteps);
-        const test = clonePiece(currentPiece);
-        test.pivotQ += stepOrig.q;
-        test.pivotR += stepOrig.r;
-        const valid = canPieceExist(test);
-        return { ...step, score, stepOrig, valid };
-      })
-      .sort((a, b) => a.score - b.score);
-
-    for (const step of scored) {
-      if (!step.valid) continue;
-      const moved = movePiece(step.stepOrig.q, step.stepOrig.r);
-      if (moved) break;
+    for (let i = 0; i < steps; i++) {
+      const moved = movePieceHorizontal(directionIndex);
+      if (!moved) break;
+      setHoverBaseFromCurrentPiece();
     }
   }
 
@@ -1289,6 +1349,15 @@
     // Current falling piece
     if (currentPiece) {
       const cells = getPieceCells(currentPiece);
+      const pivotPos = projectCell(currentPiece.pivotQ, currentPiece.pivotR, originX, originY, scale);
+      const popT = rotatePopTimer > 0 ? rotatePopTimer / ROTATE_POP_DURATION : 0;
+      const popScale = 1 + 0.08 * Math.pow(popT, 0.65);
+      if (popScale !== 1) {
+        ctx.save();
+        ctx.translate(pivotPos.x, pivotPos.y);
+        ctx.scale(popScale, popScale);
+        ctx.translate(-pivotPos.x, -pivotPos.y);
+      }
       for (const c of cells) {
         if (!isInsideHive(c.q, c.r)) continue;
         const pos = projectCell(c.q, c.r, originX, originY, scale);
@@ -1304,6 +1373,9 @@
           const fill = HONEY_COLORS[colorIndex];
           drawHex(ctx, pos.x, pos.y, hexSize * 1.02, fill, "#120910");
         }
+      }
+      if (popScale !== 1) {
+        ctx.restore();
       }
     }
 
@@ -1328,7 +1400,7 @@
     ctx.fillStyle = "rgba(255, 220, 180, 0.9)";
     ctx.textBaseline = "top";
     ctx.fillText(
-      "Drag sideways to steer • Tap piece to rotate • Use the DROP button for a fast drop",
+      "Drag sideways to steer • Tap anywhere to rotate • Use the DROP button for a fast drop",
       gameWidth / 2,
       gameHeight - margin - 34
     );
@@ -1337,8 +1409,13 @@
 
   function renderNextPreview() {
     if (!nextCanvas || !ctxNext) return;
-    const w = nextCanvas.width;
-    const h = nextCanvas.height;
+    const cssW = nextCanvas._cssWidth || nextCanvas.width;
+    const cssH = nextCanvas._cssHeight || nextCanvas.height;
+    const scaleX = nextCanvas.width / cssW;
+    const scaleY = nextCanvas.height / cssH;
+    ctxNext.setTransform(scaleX, 0, 0, scaleY, 0, 0);
+    const w = cssW;
+    const h = cssH;
     ctxNext.save();
     ctxNext.clearRect(0, 0, w, h);
 
@@ -1410,6 +1487,7 @@
     gameWidth = rect.width || 600;
     gameHeight = rect.height || 800;
 
+    loadAudioPreferences();
     initAssets();
     precomputeHive();
     resetGame();
@@ -1434,19 +1512,17 @@
 
   function handleMoveLeft() {
     if (gameState !== GAME_STATES.PLAYING) return;
-    const dir = HEX_DIRECTIONS[controlDirLeftIndex];
-    if (!dir) return;
-    if (movePiece(dir.q, dir.r)) {
+    if (movePieceHorizontal(controlDirLeftIndex)) {
       safePlaySound("move");
+      setHoverBaseFromCurrentPiece();
     }
   }
 
   function handleMoveRight() {
     if (gameState !== GAME_STATES.PLAYING) return;
-    const dir = HEX_DIRECTIONS[controlDirRightIndex];
-    if (!dir) return;
-    if (movePiece(dir.q, dir.r)) {
+    if (movePieceHorizontal(controlDirRightIndex)) {
       safePlaySound("move");
+      setHoverBaseFromCurrentPiece();
     }
   }
 
@@ -1494,7 +1570,7 @@
     if (!canvas) return null;
 
     const tapDistanceSq = 10 * 10;
-    const tapDurationMs = 180;
+    const tapDurationMs = 220;
     const touchSteerThreshold = 8;
     const softDropIntervalMs = 60;
     const touchLockDelayMs = 80;
@@ -1757,7 +1833,7 @@
         }
       } else if (gameState === GAME_STATES.MENU) {
         maybeStartFromMenu();
-      } else if (isTap && isTapOnPiece(pos)) {
+      } else if (isTap && currentPiece && gameState === GAME_STATES.PLAYING) {
         handleRotateCW();
       }
 
@@ -1867,6 +1943,22 @@
 
     function renderOverlay(ctx) {
       if (!ctx) return;
+      if (gameState === GAME_STATES.PLAYING && currentPiece) {
+        const target = dragTargetAxial || hoverTargetAxial;
+        if (target) {
+          const { originX, originY, scale } = getGridOrigin();
+          const pivotPos = projectCell(currentPiece.pivotQ, currentPiece.pivotR, originX, originY, scale);
+          const targetPos = projectCell(target.q, target.r, originX, originY, scale);
+          ctx.save();
+          ctx.strokeStyle = "rgba(255, 213, 107, 0.18)";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(pivotPos.x, pivotPos.y);
+          ctx.lineTo(targetPos.x, pivotPos.y);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
       const rect = getHiveButtonRect();
       const baseAlpha = state.hiveButtonHover ? 0.65 : 0.52;
       const pressScale = state.hiveButtonPressed && state.hiveButtonHover ? 0.96 : 1;
@@ -1946,6 +2038,9 @@
     handleHardDrop,
     handleRotateHiveLeft,
     handleRotateHiveRight,
+    setMusicEnabled,
+    setSfxEnabled,
+    getAudioSettings: () => ({ musicEnabled, sfxEnabled }),
     createInputController,
     getStats,
     getState,
