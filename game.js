@@ -544,37 +544,60 @@
     return heightKey(pivotPrim.q, pivotPrim.r);
   }
 
+  function getPieceFallRow(piece) {
+    const steps = stepsToCanonicalDown();
+    const pivotPrim = global.rotateAxial(piece.pivotQ, piece.pivotR, steps);
+    return pivotPrim.r; // canonical down ekseninde düşüş satırı
+  }
+  
   function movePieceHorizontal(dirIndex) {
     if (gameState !== GAME_STATES.PLAYING) return false;
     if (!currentPiece) return false;
+  
     const step = HEX_DIRECTIONS[dirIndex];
     if (!step) return false;
-
-    const currentH = getPieceHeight(currentPiece);
+  
+    const g = HEX_DIRECTIONS[gravityDirIndex];
+    if (!g) return false;
+  
+    const startRow = getPieceFallRow(currentPiece);
+  
+    // 1) önce yan adımı dene
     const primary = clonePiece(currentPiece);
     primary.pivotQ += step.q;
     primary.pivotR += step.r;
     if (!canPieceExist(primary)) return false;
-
-    const movedHeight = getPieceHeight(primary);
-    if (movedHeight < currentH) {
-      const g = HEX_DIRECTIONS[gravityDirIndex];
-      if (g) {
-        const compensated = clonePiece(primary);
-        compensated.pivotQ += g.q;
-        compensated.pivotR += g.r;
-        const compensatedHeight = getPieceHeight(compensated);
-        if (compensatedHeight >= currentH && canPieceExist(compensated)) {
-          currentPiece = compensated;
-          return true;
-        }
-      }
-      return false;
+  
+    const rowAfterSide = getPieceFallRow(primary);
+  
+    // Yan adım satırı bozmadıysa direkt uygula
+    if (rowAfterSide === startRow) {
+      currentPiece = primary;
+      return true;
     }
-
-    currentPiece = primary;
-    return true;
+  
+    // 2) yan adım satırı bozduysa tek adım kompanzasyon dene
+    const compensated = clonePiece(primary);
+  
+    if (rowAfterSide > startRow) {
+      // Yan adım taşı "aşağı" kaydırdı -> 1 adım anti-gravity ile geri al
+      compensated.pivotQ -= g.q;
+      compensated.pivotR -= g.r;
+    } else {
+      // Yan adım taşı "yukarı" kaydırdı -> 1 adım gravity ile geri al
+      compensated.pivotQ += g.q;
+      compensated.pivotR += g.r;
+    }
+  
+    if (canPieceExist(compensated) && getPieceFallRow(compensated) === startRow) {
+      currentPiece = compensated;
+      return true;
+    }
+  
+    // 3) satırı koruyamıyorsak bu yan hareketi iptal et
+    return false;
   }
+
 
   function resetSideDrift() {
     sideDriftY = 0;
