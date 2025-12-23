@@ -1141,9 +1141,9 @@
     if (Math.abs(deltaQ) <= deadzone) return;
 
     const directionIndex = deltaQ > 0 ? controlDirRightIndex : controlDirLeftIndex;
-    const steps = Math.min(maxSteps, Math.max(1, Math.round(Math.abs(deltaQ))));
+    const moveSteps = Math.min(maxSteps, Math.max(1, Math.round(Math.abs(deltaQ))));
 
-    for (let i = 0; i < steps; i++) {
+    for (let i = 0; i < moveSteps; i++) {
       const moved = movePieceHorizontal(directionIndex);
       if (!moved) break;
       setHoverBaseFromCurrentPiece();
