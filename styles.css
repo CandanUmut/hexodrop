@@ -43,10 +43,14 @@ body {
   touch-action: none;
   -webkit-user-select: none;
   user-select: none;
+  -webkit-touch-callout: none;
 }
 
 #game-canvas {
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 button,
@@ -242,6 +246,29 @@ button,
   gap: 6px;
 }
 
+.next-piece.floating {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  width: 140px;
+  max-width: 40vw;
+  z-index: 4;
+}
+
+.next-mobile-host {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 8px;
+}
+
+.next-mobile-host .next-piece {
+  pointer-events: auto;
+}
+
 #next-canvas {
   background: radial-gradient(circle at center, #24132f 0, #130918 80%);
   border-radius: 12px;
@@ -249,6 +276,7 @@ button,
   width: 100%;
   height: auto;
   aspect-ratio: 1 / 1;
+  min-width: 110px;
 }
 
 /* Buttons */
@@ -257,6 +285,10 @@ button,
   display: flex;
   gap: 8px;
   margin-top: 6px;
+}
+
+.audio-row button {
+  flex: 1;
 }
 
 button {
@@ -529,6 +561,11 @@ button:disabled {
   .touch-zone.bottom {
     left: 35%;
     right: 35%;
+  }
+
+  .next-piece.floating {
+    width: 36vw;
+    min-width: 120px;
   }
 }
 

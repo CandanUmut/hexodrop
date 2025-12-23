@@ -5,7 +5,7 @@
   <title>Hex Hive Drop</title>
   <meta
     name="viewport"
-    content="width=device-width, initial-scale=1, viewport-fit=cover"
+    content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
   />
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -29,6 +29,7 @@
       <div class="game-column">
         <div class="game-container">
           <canvas id="game-canvas"></canvas>
+          <div id="mobile-next-host" class="next-mobile-host"></div>
           <button id="btn-drop" class="drop-button" aria-label="Hard drop piece">DROP</button>
         </div>
       </div>
@@ -65,18 +66,22 @@
             <button id="btn-restart">Restart</button>
             <button id="btn-leaderboard">Leaderboard</button>
           </div>
+          <div class="button-row audio-row">
+            <button id="btn-music" aria-pressed="true">Music: ON</button>
+            <button id="btn-sfx" aria-pressed="true">SFX: ON</button>
+          </div>
         </section>
 
         <section class="panel-card help">
           <h2>How to Play</h2>
-          <p>• Drop clusters of hexes into a big hex-shaped hive.</p>
-          <p>• Rotate the entire hive in 60° steps to change which edge is “down”.</p>
+          <p>• Drop clusters of hexes into the rotating hive. Gravity follows the glowing wall.</p>
+          <p>• Rotate the entire hive in 60° steps to choose which edge is “down”.</p>
           <p>• Fill an entire ring around the center to clear it and score points.</p>
           <p>• Keep stacking smartly so the hive doesn’t overflow.</p>
           <h2>Controls</h2>
-          <p>Keyboard: ← / → move, ↓ soft drop, ↑ rotate piece, Space hard drop, Q rotate hive, P pause.</p>
-          <p>Mouse: move the cursor to guide the piece, click the piece to rotate, right click (or double-click) to hard drop.</p>
-          <p>Touch: drag the piece sideways to move, tap the piece to rotate, use the DROP button for a fast drop, tap ↺ to rotate the hive.</p>
+          <p>Keyboard: ← / A move left, → / D move right, ↓ / S soft drop, ↑ / W rotate piece, Space hard drop, Q rotate hive, P pause.</p>
+          <p>Mouse: move left/right to steer, click anywhere on the hive to rotate the piece, right click (or double-click) to hard drop.</p>
+          <p>Touch: drag sideways to move, tap anywhere on the hive to rotate the piece, use buttons for DROP and ↺ (rotate hive).</p>
         </section>
       </aside>
     </main>
@@ -136,21 +141,29 @@
           <div>
             <h3>Keyboard</h3>
             <ul>
-              <li>← / → : move piece left / right</li>
-              <li>↓ : soft drop</li>
-              <li>↑ : rotate piece clockwise</li>
+              <li>ArrowLeft / A : move piece left</li>
+              <li>ArrowRight / D : move piece right</li>
+              <li>ArrowDown / S : soft drop</li>
+              <li>ArrowUp / W : rotate piece clockwise</li>
               <li>Space : hard drop</li>
               <li>Q : rotate hive left</li>
               <li>P : pause</li>
             </ul>
           </div>
             <div>
-              <h3>Mobile</h3>
+              <h3>Mouse</h3>
               <ul>
-              <li>Drag sideways to move the piece</li>
-              <li>Tap the piece to rotate</li>
-              <li>Tap the DROP button to hard drop</li>
-              <li>Tap ↺ to rotate the hive</li>
+                <li>Move the cursor left/right to steer the piece</li>
+                <li>Click anywhere on the hive to rotate the piece</li>
+                <li>Right click or double-click: hard drop</li>
+              </ul>
+            </div>
+            <div>
+              <h3>Touch</h3>
+              <ul>
+                <li>Drag left/right to move the piece horizontally</li>
+                <li>Tap anywhere on the hive to rotate the piece</li>
+                <li>Use on-screen buttons for DROP and ↺ rotate hive</li>
               </ul>
             </div>
       </div>

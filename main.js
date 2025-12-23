@@ -43,6 +43,13 @@
   let btnRestart;
   let btnLeaderboard;
   let btnDrop;
+  let btnMusic;
+  let btnSfx;
+
+  let nextPanel;
+  let nextPanelOriginalParent = null;
+  let nextPanelOriginalSibling = null;
+  let mobileNextHost;
 
   let inputController;
 
@@ -79,6 +86,15 @@
     btnRestart = document.getElementById("btn-restart");
     btnLeaderboard = document.getElementById("btn-leaderboard");
     btnDrop = document.getElementById("btn-drop");
+    btnMusic = document.getElementById("btn-music");
+    btnSfx = document.getElementById("btn-sfx");
+
+    nextPanel = document.querySelector(".next-piece");
+    mobileNextHost = document.getElementById("mobile-next-host");
+    if (nextPanel) {
+      nextPanelOriginalParent = nextPanel.parentElement;
+      nextPanelOriginalSibling = nextPanel.nextElementSibling;
+    }
 
     setupButtons();
     setupNicknameModal();
@@ -97,6 +113,24 @@
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     HexHiveGame.setSize(rect.width, rect.height);
+
+    resizeNextCanvas();
+    ensureNextPlacement();
+  }
+
+  function resizeNextCanvas() {
+    if (!nextCanvas) return;
+    const rect = nextCanvas.getBoundingClientRect();
+    const dpr = global.devicePixelRatio || 1;
+    const width = rect.width || nextCanvas.clientWidth || 120;
+    const height = rect.height || nextCanvas.clientHeight || width;
+
+    nextCanvas.style.width = `${width}px`;
+    nextCanvas.style.height = `${height}px`;
+    nextCanvas.width = width * dpr;
+    nextCanvas.height = height * dpr;
+    nextCanvas._cssWidth = width;
+    nextCanvas._cssHeight = height;
   }
 
   function setupButtons() {
@@ -128,6 +162,31 @@
         HexHiveGame.handleHardDrop();
       });
     }
+
+    if (btnMusic) {
+      btnMusic.addEventListener("click", () => {
+        const current = HexHiveGame.getAudioSettings().musicEnabled;
+        HexHiveGame.setMusicEnabled(!current);
+        updateAudioButtons();
+      });
+    }
+
+    if (btnSfx) {
+      btnSfx.addEventListener("click", () => {
+        const current = HexHiveGame.getAudioSettings().sfxEnabled;
+        HexHiveGame.setSfxEnabled(!current);
+        updateAudioButtons();
+      });
+    }
+  }
+
+  function updateAudioButtons() {
+    if (!btnMusic || !btnSfx) return;
+    const audio = HexHiveGame.getAudioSettings();
+    btnMusic.textContent = `Music: ${audio.musicEnabled ? "ON" : "OFF"}`;
+    btnMusic.setAttribute("aria-pressed", audio.musicEnabled ? "true" : "false");
+    btnSfx.textContent = `SFX: ${audio.sfxEnabled ? "ON" : "OFF"}`;
+    btnSfx.setAttribute("aria-pressed", audio.sfxEnabled ? "true" : "false");
   }
 
   function setupHelpOverlay() {
@@ -143,6 +202,23 @@
           hideHelp();
         }
       });
+    }
+  }
+
+  function ensureNextPlacement() {
+    if (!nextPanel || !mobileNextHost || !nextPanelOriginalParent) return;
+    const isMobile = window.innerWidth <= 820;
+    if (isMobile) {
+      if (nextPanel.parentElement !== mobileNextHost) {
+        mobileNextHost.appendChild(nextPanel);
+        nextPanel.classList.add("floating");
+      }
+    } else if (nextPanel.parentElement !== nextPanelOriginalParent) {
+      nextPanelOriginalParent.insertBefore(
+        nextPanel,
+        nextPanelOriginalSibling || nextPanelOriginalParent.firstChild
+      );
+      nextPanel.classList.remove("floating");
     }
   }
 
@@ -350,6 +426,7 @@
     resizeCanvas();
     HexHiveGame.initGame(canvas, nextCanvas);
     inputController = HexHiveGame.createInputController(canvas);
+    updateAudioButtons();
     resetStatTracking();
     updateButtonStates();
     lastGameState = HexHiveGame.getState();
