@@ -1135,6 +1135,21 @@
     }
   }
 
+  function screenToHiveLocal(x, y) {
+    const { originX, originY, scale } = getGridOrigin();
+    const centerPos = projectCell(0, 0, originX, originY, scale);
+    const angle = -hiveRotationAngle;
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
+    const dx = x - centerPos.x;
+    const dy = y - centerPos.y;
+
+    return {
+      x: centerPos.x + dx * cosA - dy * sinA,
+      y: centerPos.y + dx * sinA + dy * cosA
+    };
+  }
+
   function getCurrentPieceCenterX() {
     if (!currentPiece) return null;
     const cells = getPieceCells(currentPiece);
@@ -1147,17 +1162,22 @@
     return center.x;
   }
 
-  function nudgePieceTowardX(targetX, maxSteps = 2, deadzonePx = 10) {
+  function nudgePieceTowardPointer(targetPos, maxSteps = 2, deadzonePx = 10) {
     if (gameState !== GAME_STATES.PLAYING) return;
-    if (!currentPiece || targetX == null) return;
+    if (!currentPiece || !targetPos) return;
+
+    const localTarget = screenToHiveLocal(targetPos.x, targetPos.y);
 
     const pieceCenterX = getCurrentPieceCenterX();
     if (pieceCenterX == null) return;
 
-    const deltaX = targetX - pieceCenterX;
+    const deltaX = localTarget.x - pieceCenterX;
     if (Math.abs(deltaX) <= deadzonePx) return;
 
-    const moveFn = deltaX > 0 ? () => slidePieceSideways("right") : () => slidePieceSideways("left");
+    const moveFn =
+      deltaX > 0
+        ? () => movePieceHorizontal(controlDirRightIndex)
+        : () => movePieceHorizontal(controlDirLeftIndex);
     const { scale } = getGridOrigin();
     const stepSizePx = HEX_SIZE * scale * 1.5;
     const estimatedSteps = stepSizePx > 0 ? Math.max(1, Math.round(Math.abs(deltaX) / stepSizePx)) : 1;
@@ -1824,10 +1844,12 @@
         ensureHoverTracking();
       }
 
+      if (rotationProgress < 1) return;
+
       if (dragPointerActive && dragTargetPos) {
-        nudgePieceTowardX(dragTargetPos.x, dragStepsPerFrame, followDeadzonePx);
+        nudgePieceTowardPointer(dragTargetPos, dragStepsPerFrame, followDeadzonePx);
       } else if (hoverTargetPos) {
-        nudgePieceTowardX(hoverTargetPos.x, hoverStepsPerFrame, followDeadzonePx);
+        nudgePieceTowardPointer(hoverTargetPos, hoverStepsPerFrame, followDeadzonePx);
       }
     }
 
