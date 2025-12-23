@@ -1801,6 +1801,7 @@
       }
 
       const key = e.key;
+      const k = (e.key || "").toLowerCase();
       const stateName = gameState;
       let handled = false;
 
@@ -1809,37 +1810,39 @@
         handled = true;
       }
 
-      switch (key) {
-        case "ArrowLeft":
+      if (stateName === GAME_STATES.PLAYING) {
+        if (key === "ArrowLeft" || k === "a") {
           handleMoveLeft();
           handled = true;
-          break;
-        case "ArrowRight":
+        } else if (key === "ArrowRight" || k === "d") {
           handleMoveRight();
           handled = true;
-          break;
-        case "ArrowDown":
+        } else if (key === "ArrowDown" || k === "s") {
           handleSoftDrop();
           handled = true;
-          break;
-        case "ArrowUp":
+        } else if (key === "ArrowUp" || k === "w") {
           handleRotateCW();
           handled = true;
-          break;
-        case "q":
-        case "Q":
-          handleRotateHiveLeft();
-          handled = true;
-          break;
-        case " ":
-          handleHardDrop();
-          handled = true;
-          break;
-        case "p":
-        case "P":
-          togglePause();
-          handled = true;
-          break;
+        }
+      }
+
+      if (!handled) {
+        switch (key) {
+          case "q":
+          case "Q":
+            handleRotateHiveLeft();
+            handled = true;
+            break;
+          case " ":
+            handleHardDrop();
+            handled = true;
+            break;
+          case "p":
+          case "P":
+            togglePause();
+            handled = true;
+            break;
+        }
       }
 
       if (handled) {
