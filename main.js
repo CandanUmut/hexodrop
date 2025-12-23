@@ -129,8 +129,8 @@
         }
       }
 
-      resizeNextCanvas();
       ensureNextPlacement();
+      resizeNextCanvas();
     }
 
   function resizeNextCanvas() {
