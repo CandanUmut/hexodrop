@@ -98,8 +98,8 @@
 
   // Input state hooks
   let inputTickFn = null;
-  let hoverTargetAxial = null;
-  let dragTargetAxial = null;
+  let hoverTargetPos = null;
+  let dragTargetPos = null;
   let dragPointerActive = false;
   let hoverActive = false;
   let hoverBaseH = 0;
@@ -1121,32 +1121,46 @@
   }
 
   function maybeDeactivateHoverTracking() {
-    if (!dragPointerActive && !hoverTargetAxial && !dragTargetAxial) {
+    if (!dragPointerActive && !hoverTargetPos && !dragTargetPos) {
       deactivateHoverTracking();
     }
   }
 
-  function nudgePieceToward(target, maxSteps = 3, deadzone = 0) {
+  function getCurrentPieceCenterX() {
+    if (!currentPiece) return null;
+    const cells = getPieceCells(currentPiece);
+    if (!cells.length) return null;
+
+    const avgQ = cells.reduce((sum, c) => sum + c.q, 0) / cells.length;
+    const avgR = cells.reduce((sum, c) => sum + c.r, 0) / cells.length;
+    const { originX, originY, scale } = getGridOrigin();
+    const center = projectCell(avgQ, avgR, originX, originY, scale);
+    return center.x;
+  }
+
+  function nudgePieceTowardX(targetX, maxSteps = 3, deadzonePx = 10) {
     if (gameState !== GAME_STATES.PLAYING) return;
-    if (!currentPiece || !target) return;
+    if (!currentPiece || targetX == null) return;
 
-    // Determine canonical frame where gravity points +r'
-    const steps = stepsToCanonicalDown();
-    const inverseSteps = (6 - steps) % 6;
-    const pivot = { q: currentPiece.pivotQ, r: currentPiece.pivotR };
-    const pivotPrim = global.rotateAxial(pivot.q, pivot.r, steps);
-    const targetPrim = global.rotateAxial(target.q, target.r, steps);
+    const pieceCenterX = getCurrentPieceCenterX();
+    if (pieceCenterX == null) return;
 
-    const deltaQ = targetPrim.q - pivotPrim.q;
-    if (Math.abs(deltaQ) <= deadzone) return;
+    const deltaX = targetX - pieceCenterX;
+    if (Math.abs(deltaX) <= deadzonePx) return;
 
-    const directionIndex = deltaQ > 0 ? controlDirRightIndex : controlDirLeftIndex;
-    const moveSteps = Math.min(maxSteps, Math.max(1, Math.round(Math.abs(deltaQ))));
+    const moveFn = deltaX > 0 ? handleMoveRight : handleMoveLeft;
+    const { scale } = getGridOrigin();
+    const stepSizePx = HEX_SIZE * scale * 1.5;
+    const estimatedSteps = stepSizePx > 0 ? Math.max(1, Math.round(Math.abs(deltaX) / stepSizePx)) : 1;
+    const moveSteps = Math.min(maxSteps, estimatedSteps);
 
     for (let i = 0; i < moveSteps; i++) {
-      const moved = movePieceHorizontal(directionIndex);
-      if (!moved) break;
-      setHoverBaseFromCurrentPiece();
+      const before = currentPiece ? { q: currentPiece.pivotQ, r: currentPiece.pivotR } : null;
+      moveFn();
+      if (!currentPiece) break;
+      if (before && currentPiece.pivotQ === before.q && currentPiece.pivotR === before.r) {
+        break;
+      }
     }
   }
 
@@ -1577,9 +1591,9 @@
     const touchDropThresholdPx = 42;
     const touchDropAngleRatio = 1.6;
     const enableTouchSwipeDrop = false;
-    const hoverStepsPerFrame = 3;
-    const dragStepsPerFrame = 4;
-    const followDeadzone = 0.4;
+    const hoverStepsPerFrame = 2;
+    const dragStepsPerFrame = 3;
+    const followDeadzonePx = 10;
     const hiveButtonSize = 56;
     const hiveButtonMargin = 12;
 
@@ -1662,26 +1676,26 @@
     }
 
     function setHoverTarget(pos) {
-      hoverTargetAxial = pixelToAxial(pos.x, pos.y);
+      hoverTargetPos = pos;
       if (gameState === GAME_STATES.PLAYING) {
         ensureHoverTracking();
       }
     }
 
     function clearHoverTarget() {
-      hoverTargetAxial = null;
+      hoverTargetPos = null;
       maybeDeactivateHoverTracking();
     }
 
     function setDragTarget(pos) {
-      dragTargetAxial = pixelToAxial(pos.x, pos.y);
+      dragTargetPos = pos;
       if (gameState === GAME_STATES.PLAYING) {
         ensureHoverTracking();
       }
     }
 
     function clearDragTarget() {
-      dragTargetAxial = null;
+      dragTargetPos = null;
       maybeDeactivateHoverTracking();
     }
 
@@ -1733,14 +1747,14 @@
       if (gameState !== GAME_STATES.PLAYING) return;
       if (!currentPiece) return;
 
-      if (hoverTargetAxial || dragTargetAxial) {
+      if (hoverTargetPos || dragTargetPos) {
         ensureHoverTracking();
       }
 
-      if (dragPointerActive && dragTargetAxial) {
-        nudgePieceToward(dragTargetAxial, dragStepsPerFrame, followDeadzone);
-      } else if (hoverTargetAxial) {
-        nudgePieceToward(hoverTargetAxial, hoverStepsPerFrame, followDeadzone);
+      if (dragPointerActive && dragTargetPos) {
+        nudgePieceTowardX(dragTargetPos.x, dragStepsPerFrame, followDeadzonePx);
+      } else if (hoverTargetPos) {
+        nudgePieceTowardX(hoverTargetPos.x, hoverStepsPerFrame, followDeadzonePx);
       }
     }
 
@@ -1944,17 +1958,16 @@
     function renderOverlay(ctx) {
       if (!ctx) return;
       if (gameState === GAME_STATES.PLAYING && currentPiece) {
-        const target = dragTargetAxial || hoverTargetAxial;
+        const target = dragTargetPos || hoverTargetPos;
         if (target) {
           const { originX, originY, scale } = getGridOrigin();
           const pivotPos = projectCell(currentPiece.pivotQ, currentPiece.pivotR, originX, originY, scale);
-          const targetPos = projectCell(target.q, target.r, originX, originY, scale);
           ctx.save();
           ctx.strokeStyle = "rgba(255, 213, 107, 0.18)";
           ctx.lineWidth = 3;
           ctx.beginPath();
           ctx.moveTo(pivotPos.x, pivotPos.y);
-          ctx.lineTo(targetPos.x, pivotPos.y);
+          ctx.lineTo(target.x, pivotPos.y);
           ctx.stroke();
           ctx.restore();
         }
