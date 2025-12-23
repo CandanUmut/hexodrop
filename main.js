@@ -1,9 +1,9 @@
 // main.js
 // Wiring DOM, input, loop, and Supabase integration for Hex Hive Drop.
 
-(function (global) {
-  const HexHiveGame = global.HexHiveGame;
-  const HexHiveSupabase = global.HexHiveSupabase;
+  (function (global) {
+    const HexHiveGame = global.HexHiveGame;
+    const HexHiveSupabase = global.HexHiveSupabase;
 
   let canvas;
   let ctx;
@@ -51,10 +51,18 @@
   let nextPanelOriginalSibling = null;
   let mobileNextHost;
 
-  let inputController;
+    let inputController;
 
-  function initDom() {
-    canvas = document.getElementById("game-canvas");
+    function ensureGameAvailable(actionName) {
+      if (!HexHiveGame) {
+        console.error(`HexHiveGame is not available${actionName ? ` while attempting to ${actionName}` : ""}.`);
+        return false;
+      }
+      return true;
+    }
+
+    function initDom() {
+      canvas = document.getElementById("game-canvas");
     nextCanvas = document.getElementById("next-canvas");
     ctx = canvas.getContext("2d");
 
@@ -106,17 +114,24 @@
   function resizeCanvas() {
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const dpr = global.devicePixelRatio || 1;
+      const dpr = global.devicePixelRatio || 1;
 
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
 
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    HexHiveGame.setSize(rect.width, rect.height);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (ensureGameAvailable("resize the game")) {
+        const setSize = HexHiveGame.setSize;
+        if (typeof setSize === "function") {
+          setSize(rect.width, rect.height);
+        } else {
+          console.error("HexHiveGame.setSize is not available; cannot resize canvas.");
+        }
+      }
 
-    resizeNextCanvas();
-    ensureNextPlacement();
-  }
+      resizeNextCanvas();
+      ensureNextPlacement();
+    }
 
   function resizeNextCanvas() {
     if (!nextCanvas) return;
@@ -133,12 +148,18 @@
     nextCanvas._cssHeight = height;
   }
 
-  function setupButtons() {
-    btnPlay.addEventListener("click", () => {
-      HexHiveGame.startGame();
-      resetStatTracking();
-      updateButtonStates();
-    });
+    function setupButtons() {
+      btnPlay.addEventListener("click", () => {
+        if (!ensureGameAvailable("start the game")) return;
+        const startGame = HexHiveGame.startGame;
+        if (typeof startGame !== "function") {
+          console.error("HexHiveGame.startGame is not available; cannot start the game.");
+          return;
+        }
+        startGame();
+        resetStatTracking();
+        updateButtonStates();
+      });
 
     btnPause.addEventListener("click", () => {
       HexHiveGame.togglePause();
