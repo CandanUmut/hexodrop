@@ -1126,72 +1126,6 @@
 
   // ---------- Rendering ----------
 
-  function renderExitIndicator(ctx) {
-    const label = "EXIT";
-    const x = 20;
-    const yCenter = gameHeight * 0.68;
-    const height = 28;
-    const paddingX = 12;
-    const pulse = 0.08 + 0.05 * Math.sin(Date.now() / 900);
-
-    ctx.save();
-    ctx.font = "14px 'Inter', 'Segoe UI', system-ui, sans-serif";
-    const textWidth = ctx.measureText(label).width;
-    const width = Math.max(94, textWidth + paddingX * 2 + 16);
-    const y = yCenter - height / 2;
-    const radius = height / 2;
-
-    ctx.shadowColor = "rgba(255, 200, 120, 0.28)";
-    ctx.shadowBlur = 8;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 0;
-
-    ctx.beginPath();
-    ctx.moveTo(x + radius, y);
-    ctx.lineTo(x + width - radius, y);
-    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-    ctx.lineTo(x + width, y + height - radius);
-    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-    ctx.lineTo(x + radius, y + height);
-    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-    ctx.lineTo(x, y + radius);
-    ctx.quadraticCurveTo(x, y, x + radius, y);
-    ctx.closePath();
-
-    ctx.fillStyle = `rgba(10, 6, 14, ${0.62 + pulse})`;
-    ctx.fill();
-    ctx.lineWidth = 1.2;
-    ctx.strokeStyle = `rgba(255, 255, 255, ${0.18 + pulse * 0.4})`;
-    ctx.stroke();
-
-    ctx.shadowColor = "rgba(0,0,0,0)";
-    ctx.shadowBlur = 0;
-
-    ctx.fillStyle = "rgba(245, 212, 160, 0.92)";
-    ctx.textAlign = "left";
-    ctx.textBaseline = "middle";
-    ctx.fillText(label, x + paddingX, yCenter);
-
-    const arrowBaseX = x + width - 20;
-    const arrowCenterY = yCenter;
-    ctx.beginPath();
-    ctx.moveTo(arrowBaseX, arrowCenterY - 6);
-    ctx.lineTo(arrowBaseX + 12, arrowCenterY);
-    ctx.lineTo(arrowBaseX, arrowCenterY + 6);
-    ctx.closePath();
-    ctx.fillStyle = "rgba(255, 190, 110, 0.88)";
-    ctx.fill();
-
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(arrowBaseX - 12, arrowCenterY);
-    ctx.lineTo(arrowBaseX, arrowCenterY);
-    ctx.stroke();
-
-    ctx.restore();
-  }
-
   function renderGame(ctx) {
     if (!canvas) return;
 
@@ -1374,7 +1308,6 @@
     }
 
     ctx.restore(); // hive transform
-    renderExitIndicator(ctx);
     ctx.restore(); // scene
 
     renderMenuHint(ctx);
@@ -1395,7 +1328,7 @@
     ctx.fillStyle = "rgba(255, 220, 180, 0.9)";
     ctx.textBaseline = "top";
     ctx.fillText(
-      "Drag to move • Tap piece to rotate • Tap away to drop • Swipe down to soft drop",
+      "Drag sideways to steer • Tap piece to rotate • Use the DROP button for a fast drop",
       gameWidth / 2,
       gameHeight - margin - 34
     );
@@ -1560,10 +1493,14 @@
   function createInputController(canvas) {
     if (!canvas) return null;
 
-    const tapDistanceSq = 8 * 8;
-    const tapDurationMs = 250;
-    const swipeDropThreshold = 30;
+    const tapDistanceSq = 10 * 10;
+    const tapDurationMs = 180;
+    const touchSteerThreshold = 8;
     const softDropIntervalMs = 60;
+    const touchLockDelayMs = 80;
+    const touchDropThresholdPx = 42;
+    const touchDropAngleRatio = 1.6;
+    const enableTouchSwipeDrop = false;
     const hoverStepsPerFrame = 3;
     const dragStepsPerFrame = 4;
     const followDeadzone = 0.4;
@@ -1581,7 +1518,11 @@
       interactingWithHiveButton: false,
       hiveButtonHover: false,
       hiveButtonPressed: false,
-      lastSoftDrop: 0
+      lastSoftDrop: 0,
+      touchActive: false,
+      touchMode: "none",
+      touchStartTime: 0,
+      touchStartPos: null
     };
 
     function getHiveButtonRect() {
@@ -1668,16 +1609,41 @@
       maybeDeactivateHoverTracking();
     }
 
-    function maybeSoftDrop(deltaX, deltaY) {
+    function maybeSoftDrop(deltaX, deltaY, pointerType) {
+      if (pointerType === "touch") return;
       if (gameState !== GAME_STATES.PLAYING) return;
       const now = performance.now();
       if (
-        deltaY > swipeDropThreshold &&
-        Math.abs(deltaY) > Math.abs(deltaX) &&
+        deltaY > touchDropThresholdPx &&
+        Math.abs(deltaY) > touchDropAngleRatio * Math.abs(deltaX) &&
         now - state.lastSoftDrop > softDropIntervalMs
       ) {
         state.lastSoftDrop = now;
         handleSoftDrop();
+      }
+    }
+
+    function handleTouchMove(pos, deltaX, deltaY) {
+      state.dragging = true;
+      if (state.touchMode === "steer") {
+        if (Math.abs(deltaX) >= touchSteerThreshold) {
+          dragPointerActive = true;
+          const steerY = state.touchStartPos ? state.touchStartPos.y : pos.y;
+          setDragTarget({ x: pos.x, y: steerY });
+        }
+
+        if (
+          enableTouchSwipeDrop &&
+          performance.now() - state.touchStartTime > touchLockDelayMs &&
+          deltaY > touchDropThresholdPx &&
+          Math.abs(deltaY) > touchDropAngleRatio * Math.abs(deltaX)
+        ) {
+          state.touchMode = "drop";
+          state.lastSoftDrop = 0;
+          handleSoftDrop();
+        }
+      } else if (state.touchMode === "drop" && enableTouchSwipeDrop) {
+        maybeSoftDrop(deltaX, deltaY, "touch");
       }
     }
 
@@ -1715,6 +1681,10 @@
       state.downPos = pos;
       state.lastPos = pos;
       state.downTime = performance.now();
+      state.touchActive = evt.pointerType === "touch";
+      state.touchMode = state.touchActive ? "steer" : "none";
+      state.touchStartTime = state.downTime;
+      state.touchStartPos = pos;
       state.dragging = false;
       state.pointerType = evt.pointerType;
       state.totalDelta = { x: 0, y: 0 };
@@ -1723,8 +1693,13 @@
       state.hiveButtonHover = state.interactingWithHiveButton;
 
       if (!state.interactingWithHiveButton) {
-        dragPointerActive = true;
-        setDragTarget(pos);
+        if (state.touchActive) {
+          dragPointerActive = false;
+          clearDragTarget();
+        } else {
+          dragPointerActive = true;
+          setDragTarget(pos);
+        }
       }
 
       canvas.setPointerCapture(evt.pointerId);
@@ -1749,6 +1724,8 @@
 
       if (state.interactingWithHiveButton) {
         state.hiveButtonHover = isOnHiveButton(pos);
+      } else if (state.touchActive) {
+        handleTouchMove(pos, deltaX, deltaY);
       } else {
         state.dragging = true;
         if (gameState === GAME_STATES.MENU && Math.abs(deltaY) > 20) {
@@ -1756,7 +1733,7 @@
         }
         dragPointerActive = true;
         setDragTarget(pos);
-        maybeSoftDrop(deltaX, deltaY);
+        maybeSoftDrop(deltaX, deltaY, state.pointerType);
       }
 
       evt.preventDefault();
@@ -1811,6 +1788,10 @@
       state.hiveButtonHover = false;
       state.hiveButtonPressed = false;
       dragPointerActive = false;
+      state.touchActive = false;
+      state.touchMode = "none";
+      state.touchStartTime = 0;
+      state.touchStartPos = null;
       clearDragTarget();
     }
 

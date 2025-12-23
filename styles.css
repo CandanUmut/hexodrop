@@ -39,6 +39,12 @@ body {
 }
 
 
+.game-container {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 #game-canvas {
   touch-action: none;
 }
