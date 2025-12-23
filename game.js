@@ -103,6 +103,7 @@
   let dragPointerActive = false;
   let hoverActive = false;
   let hoverBaseH = 0;
+  let sideDriftY = 0;
 
   let rotatePopTimer = 0;
   const ROTATE_POP_DURATION = 0.16;
@@ -575,6 +576,10 @@
     return true;
   }
 
+  function resetSideDrift() {
+    sideDriftY = 0;
+  }
+
   function rotatePiece(deltaRotation) {
     if (!currentPiece) return;
     const test = clonePiece(currentPiece);
@@ -706,6 +711,7 @@
     }
     currentPiece = null;
     safePlaySound("drop");
+    resetSideDrift();
 
     const clearedLines = resolveClearsAndCollapse();
     if (clearedLines > 0) {
@@ -728,6 +734,7 @@
 
     if (canPieceExist(spawnPiece)) {
       currentPiece = spawnPiece;
+      resetSideDrift();
       if (hoverActive) {
         setHoverBaseFromCurrentPiece();
       }
@@ -933,6 +940,7 @@
     hiveShakeTime = 0;
     hoverActive = false;
     hoverBaseH = 0;
+    resetSideDrift();
     recomputeDirectionMapping();
   }
 
@@ -950,6 +958,7 @@
     cellEffects = [];
     hoverActive = false;
     hoverBaseH = 0;
+    resetSideDrift();
 
     recomputeDirectionMapping();
     spawnNextPieceOrGameOver();
@@ -1138,7 +1147,7 @@
     return center.x;
   }
 
-  function nudgePieceTowardX(targetX, maxSteps = 3, deadzonePx = 10) {
+  function nudgePieceTowardX(targetX, maxSteps = 2, deadzonePx = 10) {
     if (gameState !== GAME_STATES.PLAYING) return;
     if (!currentPiece || targetX == null) return;
 
@@ -1148,7 +1157,7 @@
     const deltaX = targetX - pieceCenterX;
     if (Math.abs(deltaX) <= deadzonePx) return;
 
-    const moveFn = deltaX > 0 ? handleMoveRight : handleMoveLeft;
+    const moveFn = deltaX > 0 ? () => slidePieceSideways("right") : () => slidePieceSideways("left");
     const { scale } = getGridOrigin();
     const stepSizePx = HEX_SIZE * scale * 1.5;
     const estimatedSteps = stepSizePx > 0 ? Math.max(1, Math.round(Math.abs(deltaX) / stepSizePx)) : 1;
@@ -1156,12 +1165,75 @@
 
     for (let i = 0; i < moveSteps; i++) {
       const before = currentPiece ? { q: currentPiece.pivotQ, r: currentPiece.pivotR } : null;
-      moveFn();
-      if (!currentPiece) break;
+      const moved = moveFn();
+      if (!moved || !currentPiece) break;
       if (before && currentPiece.pivotQ === before.q && currentPiece.pivotR === before.r) {
         break;
       }
     }
+  }
+
+  function computeScreenDirections() {
+    const angle = hiveRotationAngle;
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
+    const dirs = [];
+    for (let i = 0; i < HEX_DIRECTIONS.length; i++) {
+      const d = HEX_DIRECTIONS[i];
+      const p = global.axialToPixel(d.q, d.r, 0, 0);
+      const xr = p.x * cosA - p.y * sinA;
+      const yr = p.x * sinA + p.y * cosA;
+      dirs.push({ index: i, xr, yr, q: d.q, r: d.r });
+    }
+    return dirs;
+  }
+
+  function findSideCandidates(sign) {
+    const dirs = computeScreenDirections();
+    const filtered = dirs.filter((d) => (sign > 0 ? d.xr > 0 : d.xr < 0));
+    let bestPair = null;
+    let bestScore = -Infinity;
+
+    for (let i = 0; i < filtered.length; i++) {
+      for (let j = i + 1; j < filtered.length; j++) {
+        const a = filtered[i];
+        const b = filtered[j];
+        if (Math.sign(a.yr) === Math.sign(b.yr)) continue;
+        const score = Math.min(Math.abs(a.xr), Math.abs(b.xr));
+        if (score > bestScore) {
+          bestScore = score;
+          bestPair = [a, b];
+        }
+      }
+    }
+
+    return bestPair;
+  }
+
+  function chooseSideStep(pair) {
+    if (!pair) return null;
+    const [a, b] = pair;
+    const first = Math.abs(sideDriftY + a.yr) <= Math.abs(sideDriftY + b.yr) ? a : b;
+    const second = first === a ? b : a;
+    return [first, second];
+  }
+
+  function slidePieceSideways(direction) {
+    if (!currentPiece) return false;
+    const sign = direction === "right" ? 1 : -1;
+    const pair = findSideCandidates(sign);
+    if (!pair) return false;
+    const [primary, secondary] = chooseSideStep(pair);
+    const candidates = [primary, secondary];
+
+    for (const cand of candidates) {
+      if (movePiece(cand.q, cand.r)) {
+        sideDriftY += cand.yr;
+        setHoverBaseFromCurrentPiece();
+        return true;
+      }
+    }
+    return false;
   }
 
   function projectCell(q, r, originX, originY, scale) {
@@ -1479,6 +1551,7 @@
     hiveShakeTime = HIVE_SHAKE_DURATION;
     safePlaySound("rotate");
     debugLog("Hive rotate", { step, targetRotationAngle });
+    resetSideDrift();
     recomputeDirectionMapping();
   }
 
@@ -1592,7 +1665,7 @@
     const touchDropAngleRatio = 1.6;
     const enableTouchSwipeDrop = false;
     const hoverStepsPerFrame = 2;
-    const dragStepsPerFrame = 3;
+    const dragStepsPerFrame = 2;
     const followDeadzonePx = 10;
     const hiveButtonSize = 56;
     const hiveButtonMargin = 12;

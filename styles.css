@@ -240,33 +240,28 @@ button,
   text-shadow: 0 0 10px rgba(246, 196, 83, 0.65);
 }
 
+
 .next-piece {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  pointer-events: none;
 }
 
 .next-piece.floating {
-  position: absolute;
-  right: 10px;
-  top: 10px;
-  width: 140px;
-  max-width: 40vw;
-  z-index: 4;
+  position: static;
+  width: auto;
+  max-width: none;
+  z-index: 1;
 }
 
 .next-mobile-host {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-end;
-  padding: 8px;
-}
-
-.next-mobile-host .next-piece {
-  pointer-events: auto;
+  display: none;
+  width: 100%;
+  margin-bottom: 8px;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-start;
 }
 
 #next-canvas {
@@ -277,6 +272,7 @@ button,
   height: auto;
   aspect-ratio: 1 / 1;
   min-width: 110px;
+  pointer-events: none;
 }
 
 /* Buttons */
@@ -548,6 +544,10 @@ button:disabled {
     flex: 1 1 150px;
   }
 
+  .next-mobile-host {
+    display: flex;
+  }
+
   .controls .button-row {
     flex-wrap: wrap;
   }
@@ -566,6 +566,7 @@ button:disabled {
   .next-piece.floating {
     width: 36vw;
     min-width: 120px;
+    max-width: 220px;
   }
 }
 
