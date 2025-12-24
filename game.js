@@ -2089,10 +2089,8 @@
     }
 
     function onDblClick(e) {
-      if (gameState === GAME_STATES.PLAYING) {
-        handleHardDrop();
-        e.preventDefault();
-      }
+      // Disable hard drop on double-click to avoid conflict with rapid rotate taps.
+      e.preventDefault();
     }
 
     const preventContextMenu = (e) => e.preventDefault();
